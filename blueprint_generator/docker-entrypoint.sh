@@ -1,11 +1,12 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 set -e
 
 # Create log directory if it doesn't exist
 mkdir -p /var/log/blueprint_generator
 
-# Start nginx
+# Start nginx in the background
 nginx
 
 # Start the Flask application
-python3 /opt/blueprint_generator/run.py
+cd /opt/blueprint_generator
+exec python3 run.py
