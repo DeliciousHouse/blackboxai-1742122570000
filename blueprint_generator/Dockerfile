@@ -19,57 +19,49 @@ RUN \
         bluez-libs \
         git \
         nginx \
-        # Add BLAS/LAPACK dependencies
+        openblas \
         openblas-dev \
         lapack-dev \
         gfortran \
         musl-dev \
-        # Add additional build dependencies
         cmake \
         g++ \
-        make \
-        # Add numpy/scipy dependencies
-        openblas \
-        libstdc++
+        make
 
-# Set environment variables for numpy/scipy build
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
 ENV OPENBLAS=/usr/lib/
 ENV LAPACK=/usr/lib/
 ENV BLAS=/usr/lib/
-ENV CFLAGS="-I/usr/include/openblas"
-ENV LDFLAGS="-L/usr/lib/openblas -lopenblas"
-ENV NUMPY_EXPERIMENTAL_ARRAY_FUNCTION=0
 
-# Copy local files
-COPY . /opt/blueprint_generator
-
-# Set working directory
+# Create app directory
 WORKDIR /opt/blueprint_generator
 
-# Install Python dependencies in specific order
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir wheel setuptools && \
-    pip3 install --no-cache-dir numpy==1.21.2 && \
-    pip3 install --no-cache-dir scipy==1.7.1 && \
     pip3 install --no-cache-dir -r requirements.txt
 
-# Add nginx configuration
+# Copy application files
+COPY . .
+
+# Configure nginx
 COPY nginx.conf /etc/nginx/http.d/default.conf
 
 # Create required directories
 RUN mkdir -p /var/log/blueprint_generator
 
 # Make scripts executable
-RUN chmod a+x /opt/blueprint_generator/run.py
-RUN chmod a+x /opt/blueprint_generator/docker-entrypoint.sh
+RUN chmod a+x run.py docker-entrypoint.sh
 
-# Expose the port
+# Expose port
 EXPOSE 8000
 
-# Copy and set up entry point
-COPY docker-entrypoint.sh /
-RUN chmod a+x /docker-entrypoint.sh
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# Set up entrypoint
+ENTRYPOINT ["/opt/blueprint_generator/docker-entrypoint.sh"]
 
 # Labels
 LABEL \
