@@ -1,0 +1,64 @@
+name: Builder
+
+env:
+  BUILD_ARGS: "--test"
+  MONITORED_FILES: "build.yaml config.yaml Dockerfile rootfs"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build Add-on
+    strategy:
+      matrix:
+        arch: ["aarch64", "amd64", "armhf", "armv7", "i386"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get information
+        id: info
+        uses: home-assistant/builder@master
+        with:
+          args: |
+            --all \
+            --target blueprint_generator \
+            --docker-hub ghcr.io/delicioushouse \
+            --image blueprint-generator \
+            --version edge \
+            ${{ env.BUILD_ARGS }}
+
+      - name: Build ${{ matrix.arch }} add-on
+        uses: home-assistant/builder@master
+        with:
+          args: |
+            --${{ matrix.arch }} \
+            --target blueprint_generator \
+            --docker-hub ghcr.io/delicioushouse \
+            --image blueprint-generator \
+            --version ${{ github.event.release.tag_name || 'edge' }} \
+            ${{ env.BUILD_ARGS }}
+
+      - name: Push to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        run: |
+          VERSION="${{ github.event.release.tag_name || 'edge' }}"
+          docker push "ghcr.io/delicioushouse/blueprint-generator-${{ matrix.arch }}:${VERSION}"
