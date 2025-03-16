@@ -1,16 +1,16 @@
 {
   "name": "Home Assistant 3D Blueprint Generator Repository",
-  "url": "https://github.com/DeliciousHouse/Home-Assistant_3D_Blueprint_Generator",
+  "url": "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator",
   "maintainer": "brendan3394@gmail.com",
   "slug": "blueprint_generator_repository",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "addons": [
     {
       "name": "3D Blueprint Generator",
-      "version": "1.0.8",
+      "version": "1.0.9",
       "slug": "blueprint_generator",
       "description": "Generate 3D home blueprints from Bluetooth sensor data",
-      "url": "https://github.com/DeliciousHouse/Home-Assistant_3D_Blueprint_Generator",
+      "url": "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator",
       "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
       "startup": "application",
       "boot": "auto",
