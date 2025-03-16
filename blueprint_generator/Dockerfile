@@ -1,5 +1,7 @@
+# Use build arguments
 ARG BUILD_FROM
-FROM $BUILD_FROM
+ARG BUILD_VERSION
+FROM ${BUILD_FROM}
 
 # Install system dependencies
 RUN \
@@ -23,7 +25,9 @@ WORKDIR /opt/blueprint_generator
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir wheel setuptools && \
+    pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY . .
