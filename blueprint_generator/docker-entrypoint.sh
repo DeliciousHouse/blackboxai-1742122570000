@@ -5,7 +5,14 @@ set -e
 mkdir -p /var/log/blueprint_generator
 
 # Start nginx in the background
-nginx
+if [ -x "/usr/sbin/nginx" ]; then
+    /usr/sbin/nginx
+elif [ -x "/usr/local/sbin/nginx" ]; then
+    /usr/local/sbin/nginx
+else
+    echo "Error: nginx executable not found"
+    exit 1
+fi
 
 # Start the Flask application
 cd /opt/blueprint_generator

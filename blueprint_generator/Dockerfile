@@ -22,7 +22,8 @@ RUN \
         bluez \
         bluez-libs \
         openblas \
-        lapack
+        lapack && \
+    mkdir -p /run/nginx
 
 # Set working directory
 WORKDIR /opt/blueprint_generator
@@ -40,7 +41,9 @@ COPY . .
 COPY nginx.conf /etc/nginx/http.d/default.conf
 
 # Create log directory
-RUN mkdir -p /var/log/blueprint_generator
+RUN mkdir -p /var/log/blueprint_generator && \
+    mkdir -p /var/log/nginx && \
+    chown -R nginx:nginx /var/log/nginx
 
 # Make scripts executable
 RUN chmod +x run.py docker-entrypoint.sh && \
