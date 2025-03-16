@@ -5,7 +5,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.9-alpine3.16
 FROM ${BUILD_FROM}
 
 # Set build version argument
-ARG BUILD_VERSION=1.0.16
+ARG BUILD_VERSION=1.0.17
 
 # Install system dependencies
 RUN \
@@ -23,7 +23,9 @@ RUN \
         bluez-libs \
         openblas \
         lapack && \
-    mkdir -p /run/nginx
+    mkdir -p /run/nginx && \
+    ln -sf /dev/stdout /var/log/nginx/access.log && \
+    ln -sf /dev/stderr /var/log/nginx/error.log
 
 # Set working directory
 WORKDIR /opt/blueprint_generator
@@ -43,11 +45,13 @@ COPY nginx.conf /etc/nginx/http.d/default.conf
 # Create log directory
 RUN mkdir -p /var/log/blueprint_generator && \
     mkdir -p /var/log/nginx && \
-    chown -R nginx:nginx /var/log/nginx
+    chown -R nginx:nginx /var/log/nginx && \
+    chmod -R 755 /var/log/nginx
 
 # Make scripts executable
 RUN chmod +x run.py docker-entrypoint.sh && \
-    mv docker-entrypoint.sh /usr/local/bin/
+    mv docker-entrypoint.sh /usr/local/bin/ && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Expose port
 EXPOSE 8000
