@@ -1,57 +1,32 @@
-# syntax=docker/dockerfile:1
+FROM python:3.9-slim
 
-# Use build arguments
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.9-alpine3.16
-FROM ${BUILD_FROM}
+# Install build dependencies and nginx
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libopenblas-dev \
+    liblapack-dev \
+    libmariadb-dev \
+    nginx \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set build version argument
-ARG BUILD_VERSION=1.0.17
+# Upgrade pip and install requirements
+RUN pip install --upgrade pip wheel setuptools
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install system dependencies
-RUN \
-    apk add --no-cache \
-        python3 \
-        py3-pip \
-        nginx \
-        mariadb-connector-c \
-        mariadb-client \
-        build-base \
-        python3-dev \
-        mariadb-dev \
-        linux-headers \
-        bluez \
-        bluez-libs \
-        openblas \
-        lapack && \
-    mkdir -p /run/nginx && \
-    ln -sf /dev/stdout /var/log/nginx/access.log && \
-    ln -sf /dev/stderr /var/log/nginx/error.log
-
-# Set working directory
+# Copy your application code
+COPY . /opt/blueprint_generator/
 WORKDIR /opt/blueprint_generator
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir --upgrade pip && \
-    pip3 install --no-cache-dir wheel setuptools && \
-    pip3 install --no-cache-dir -r requirements.txt
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/nginx.conf
 
-# Copy application files
-COPY . .
+# Create log directories
+RUN mkdir -p /var/log/blueprint_generator /var/log/nginx
 
-# Configure nginx
-COPY nginx.conf /etc/nginx/http.d/default.conf
-
-# Create log directory
-RUN mkdir -p /var/log/blueprint_generator && \
-    mkdir -p /var/log/nginx && \
-    chown -R nginx:nginx /var/log/nginx && \
-    chmod -R 755 /var/log/nginx
-
-# Make scripts executable
-RUN chmod +x run.py docker-entrypoint.sh && \
-    mv docker-entrypoint.sh /usr/local/bin/ && \
-    chmod +x /usr/local/bin/docker-entrypoint.sh
+# Make scripts executable and move entrypoint
+RUN chmod +x /opt/blueprint_generator/run.py /opt/blueprint_generator/docker-entrypoint.sh
+RUN cp /opt/blueprint_generator/docker-entrypoint.sh /usr/local/bin/
 
 # Expose port
 EXPOSE 8000
@@ -59,7 +34,7 @@ EXPOSE 8000
 # Set up entrypoint
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
-# Labels
+# Labels for Home Assistant
 LABEL \
     io.hass.name="3D Blueprint Generator" \
     io.hass.description="Generate 3D home blueprints from Bluetooth sensor data" \

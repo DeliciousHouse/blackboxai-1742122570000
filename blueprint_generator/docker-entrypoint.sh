@@ -1,19 +1,14 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
-# Create log directory if it doesn't exist
-mkdir -p /var/log/blueprint_generator
+# Create log directories
+mkdir -p /var/log/blueprint_generator /var/log/nginx
 
 # Start nginx in the background
-if [ -x "/usr/sbin/nginx" ]; then
-    /usr/sbin/nginx
-elif [ -x "/usr/local/sbin/nginx" ]; then
-    /usr/local/sbin/nginx
-else
-    echo "Error: nginx executable not found"
-    exit 1
-fi
+echo "Starting nginx..."
+nginx &
 
-# Start the Flask application
+# Start Flask application
+echo "Starting Blueprint Generator at $(date)"
 cd /opt/blueprint_generator
 exec python3 run.py
