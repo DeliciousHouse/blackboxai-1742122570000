@@ -51,17 +51,18 @@ COPY . .
 # Configure nginx
 COPY nginx.conf /etc/nginx/http.d/default.conf
 
-# Create required directories
-RUN mkdir -p /var/log/blueprint_generator
-
-# Make scripts executable
-RUN chmod a+x run.py docker-entrypoint.sh
+# Create required directories and set permissions
+RUN mkdir -p /var/log/blueprint_generator && \
+    chmod +x /opt/blueprint_generator/run.py && \
+    chmod +x /opt/blueprint_generator/docker-entrypoint.sh
 
 # Expose port
 EXPOSE 8000
 
 # Set up entrypoint
-ENTRYPOINT ["/opt/blueprint_generator/docker-entrypoint.sh"]
+COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # Labels
 LABEL \
