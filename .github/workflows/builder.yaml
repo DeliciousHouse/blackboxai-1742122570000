@@ -8,57 +8,62 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
   pull_request:
     branches:
       - main
-  release:
-    types:
-      - published
 
 jobs:
   build:
     runs-on: ubuntu-latest
     name: Build Add-on
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         arch: ["aarch64", "amd64", "armhf", "armv7", "i386"]
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
       - name: Login to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get information
-        id: info
-        uses: home-assistant/builder@master
-        with:
-          args: |
-            --all \
-            --target blueprint_generator \
-            --docker-hub ghcr.io/delicioushouse \
-            --image blueprint-generator \
-            --version edge \
-            ${{ env.BUILD_ARGS }}
-
-      - name: Build ${{ matrix.arch }} add-on
-        uses: home-assistant/builder@master
-        with:
-          args: |
-            --${{ matrix.arch }} \
-            --target blueprint_generator \
-            --docker-hub ghcr.io/delicioushouse \
-            --image blueprint-generator \
-            --version ${{ github.event.release.tag_name || 'edge' }} \
-            ${{ env.BUILD_ARGS }}
-
-      - name: Push to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+      - name: Get version
+        id: version
         run: |
-          VERSION="${{ github.event.release.tag_name || 'edge' }}"
-          docker push "ghcr.io/delicioushouse/blueprint-generator-${{ matrix.arch }}:${VERSION}"
+          version="${{ github.ref_name }}"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            version="edge"
+          elif [[ "${{ github.ref }}" != refs/tags/* ]]; then
+            version="dev"
+          fi
+          echo "version=${version#v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: ./blueprint_generator
+          file: ./blueprint_generator/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/blueprint-generator-${{ matrix.arch }}:${{ steps.version.outputs.version }}
+          build-args: |
+            BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base-python:3.9-alpine3.16
+            BUILD_VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -3,11 +3,11 @@
   "url": "https://github.com/DeliciousHouse/Home-Assistant_3D_Blueprint_Generator",
   "maintainer": "brendan3394@gmail.com",
   "slug": "blueprint_generator_repository",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "addons": [
     {
       "name": "3D Blueprint Generator",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "slug": "blueprint_generator",
       "description": "Generate 3D home blueprints from Bluetooth sensor data",
       "url": "https://github.com/DeliciousHouse/Home-Assistant_3D_Blueprint_Generator/tree/main/blueprint_generator",
@@ -32,7 +32,7 @@
         "min_rssi": "int",
         "update_interval": "int"
       },
-      "image": "ghcr.io/delicioushouse/ha-blueprint-generator-{arch}"
+      "image": "ghcr.io/delicioushouse/blueprint-generator-{arch}"
     }
   ]
 }
