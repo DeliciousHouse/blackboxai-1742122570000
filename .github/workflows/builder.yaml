@@ -42,8 +42,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get version
-        id: version
+      - name: Get version and lowercase owner
+        id: prep
         run: |
           version="${{ github.ref_name }}"
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
@@ -52,6 +52,7 @@ jobs:
             version="dev"
           fi
           echo "version=${version#v}" >> $GITHUB_OUTPUT
+          echo "owner=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v4
@@ -61,9 +62,9 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/blueprint-generator-${{ matrix.arch }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.prep.outputs.owner }}/blueprint-generator-${{ matrix.arch }}:${{ steps.prep.outputs.version }}
           build-args: |
             BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base-python:3.9-alpine3.16
-            BUILD_VERSION=${{ steps.version.outputs.version }}
+            BUILD_VERSION=${{ steps.prep.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
