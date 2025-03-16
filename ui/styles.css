@@ -1,0 +1,175 @@
+/* Custom Animations */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+/* Loading Overlay */
+#loader {
+    transition: opacity 0.3s ease-in-out;
+}
+
+#loader.show {
+    display: flex !important;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Message Toast */
+#message {
+    transition: all 0.3s ease-in-out;
+}
+
+#message.show {
+    display: block !important;
+    animation: slideIn 0.3s ease-in-out;
+}
+
+#message.success {
+    background-color: #10B981;
+    color: white;
+}
+
+#message.error {
+    background-color: #EF4444;
+    color: white;
+}
+
+/* 3D Viewport */
+#viewport {
+    transition: all 0.3s ease-in-out;
+}
+
+#viewport canvas {
+    border-radius: 0.5rem;
+}
+
+/* Room List Item Animations */
+.room-item {
+    transition: all 0.2s ease-in-out;
+}
+
+.room-item:hover {
+    transform: translateX(5px);
+}
+
+.room-item.selected {
+    border-color: #0EA5E9;
+    background-color: #F0F9FF;
+}
+
+/* Wall List Item Animations */
+.wall-item {
+    transition: all 0.2s ease-in-out;
+}
+
+.wall-item:hover {
+    transform: translateX(5px);
+}
+
+.wall-item.selected {
+    border-color: #0EA5E9;
+    background-color: #F0F9FF;
+}
+
+/* Control Button Animations */
+.control-btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.control-btn:hover {
+    transform: scale(1.05);
+}
+
+.control-btn:active {
+    transform: scale(0.95);
+}
+
+/* Form Input Focus States */
+input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #F3F4F6;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #D1D5DB;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #9CA3AF;
+}
+
+/* Room Type Badge Colors */
+.room-type-badge {
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.room-type-badge.LIVING {
+    background-color: #DBEAFE;
+    color: #1E40AF;
+}
+
+.room-type-badge.BEDROOM {
+    background-color: #FCE7F3;
+    color: #9D174D;
+}
+
+.room-type-badge.KITCHEN {
+    background-color: #ECFDF5;
+    color: #065F46;
+}
+
+.room-type-badge.BATHROOM {
+    background-color: #F3E8FF;
+    color: #6B21A8;
+}
+
+.room-type-badge.HALLWAY {
+    background-color: #FEF3C7;
+    color: #92400E;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    #viewport {
+        height: 300px;
+    }
+    
+    .control-panel {
+        margin-top: 1rem;
+    }
+}
+
+/* Print Styles */
+@media print {
+    #viewport {
+        page-break-inside: avoid;
+    }
+    
+    .control-panel {
+        display: none;
+    }
+}
