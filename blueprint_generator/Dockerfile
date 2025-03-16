@@ -35,13 +35,14 @@ COPY nginx.conf /etc/nginx/http.d/default.conf
 RUN mkdir -p /var/log/blueprint_generator
 
 # Make scripts executable
-RUN chmod +x run.py docker-entrypoint.sh
+RUN chmod +x run.py docker-entrypoint.sh && \
+    mv docker-entrypoint.sh /usr/local/bin/
 
 # Expose port
 EXPOSE 8000
 
 # Set up entrypoint
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Labels
 LABEL \
