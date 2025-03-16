@@ -1,0 +1,45 @@
+{
+  "db": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "home_assistant",
+    "password": "home_assistant_pass",
+    "database": "home_sensors"
+  },
+  "db_schema": {
+    "sensor_table": "bluetooth_readings",
+    "column_overrides": {
+      "timestamp": "datetime",
+      "sensor_id": "varchar(50)",
+      "rssi": "int",
+      "device_id": "varchar(50)",
+      "sensor_location": "json"
+    }
+  },
+  "processing_params": {
+    "rssi_threshold": -75,
+    "minimum_sensors": 3,
+    "accuracy_threshold": 1.0,
+    "distance_calculation": {
+      "reference_power": -59,
+      "path_loss_exponent": 2.0
+    },
+    "update_interval": 5
+  },
+  "blueprint_validation": {
+    "min_room_area": 4,
+    "max_room_area": 100,
+    "min_room_dimension": 1.5,
+    "max_room_dimension": 15,
+    "min_wall_thickness": 0.1,
+    "max_wall_thickness": 0.5,
+    "min_ceiling_height": 2.2,
+    "max_ceiling_height": 4.0
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "debug": true,
+    "cors_origins": ["http://localhost:8000"]
+  }
+}
