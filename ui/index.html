@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Assistant 3D Blueprint Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- Loading Overlay -->
+    <div id="loader" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+        <div class="bg-white p-4 rounded-lg shadow-lg flex items-center">
+            <i class="fas fa-spinner fa-spin text-primary-600 text-2xl mr-3"></i>
+            <span class="text-gray-700">Processing...</span>
+        </div>
+    </div>
+
+    <!-- Message Toast -->
+    <div id="message" class="fixed top-4 right-4 hidden z-40">
+        <div class="bg-white rounded-lg shadow-lg p-4 flex items-center">
+            <i class="fas fa-info-circle text-primary-600 mr-2"></i>
+            <span class="message-text"></span>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
+                <div class="flex items-center">
+                    <i class="fas fa-home text-primary-600 text-2xl mr-3"></i>
+                    <h1 class="text-xl font-semibold text-gray-900">Home Assistant 3D Blueprint Generator</h1>
+                </div>
+                <button id="refreshBtn" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <i class="fas fa-sync-alt mr-2"></i>
+                    Refresh Blueprint
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 3D Viewport -->
+                <div class="lg:col-span-2 bg-white rounded-lg shadow-sm p-4">
+                    <div id="viewport" class="w-full h-[500px] bg-gray-100 rounded-lg"></div>
+                    <div class="mt-4 flex justify-center space-x-4">
+                        <button id="rotateLeftBtn" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        <button id="rotateRightBtn" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg">
+                            <i class="fas fa-redo"></i>
+                        </button>
+                        <button id="zoomInBtn" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button id="zoomOutBtn" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <button id="resetViewBtn" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg">
+                            <i class="fas fa-home"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Control Panel -->
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                    <h2 class="text-lg font-semibold text-gray-900 mb-4">Blueprint Controls</h2>
+                    
+                    <!-- Room List -->
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-700 mb-2">Rooms</h3>
+                        <div id="roomList" class="space-y-2">
+                            <!-- Room items will be dynamically added here -->
+                        </div>
+                        <button id="addRoomBtn" class="mt-2 w-full bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-plus mr-2"></i>
+                            Add Room
+                        </button>
+                    </div>
+
+                    <!-- Wall Controls -->
+                    <div class="mb-6">
+                        <h3 class="text-sm font-medium text-gray-700 mb-2">Walls</h3>
+                        <div id="wallList" class="space-y-2">
+                            <!-- Wall items will be dynamically added here -->
+                        </div>
+                    </div>
+
+                    <!-- Manual Update Form -->
+                    <form id="updateForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Room Name</label>
+                            <input type="text" id="roomName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Room Type</label>
+                            <select id="roomType" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500">
+                                <option value="LIVING">Living Room</option>
+                                <option value="BEDROOM">Bedroom</option>
+                                <option value="KITCHEN">Kitchen</option>
+                                <option value="BATHROOM">Bathroom</option>
+                                <option value="HALLWAY">Hallway</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg">
+                            Update Blueprint
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t border-gray-200 mt-8">
+            <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+                <p class="text-center text-sm text-gray-500">
+                    Home Assistant 3D Blueprint Generator &copy; 2024
+                </p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Custom JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>
