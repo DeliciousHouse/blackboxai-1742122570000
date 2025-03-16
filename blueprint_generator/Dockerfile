@@ -5,7 +5,7 @@ ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.9-alpine3.16
 FROM ${BUILD_FROM}
 
 # Set build version argument
-ARG BUILD_VERSION=1.0.15
+ARG BUILD_VERSION=1.0.16
 
 # Install system dependencies
 RUN \
