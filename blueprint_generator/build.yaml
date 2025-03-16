@@ -8,7 +8,7 @@ build_from:
 labels:
   org.opencontainers.image.title: "Home Assistant Add-on: 3D Blueprint Generator"
   org.opencontainers.image.description: "Generate 3D home blueprints from Bluetooth sensor data"
-  org.opencontainers.image.source: "https://github.com/DeliciousHouse/Home-Assistant_3D_Blueprint_Generator"
+  org.opencontainers.image.source: "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator"
   org.opencontainers.image.licenses: "MIT"
-  org.opencontainers.image.version: "1.0.2"
+  org.opencontainers.image.version: "1.0.10"
   org.opencontainers.image.authors: "brendan3394@gmail.com"
