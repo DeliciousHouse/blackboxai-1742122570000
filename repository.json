@@ -3,7 +3,7 @@
   "url": "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator",
   "maintainer": "brendan3394@gmail.com",
   "slug": "blueprint_generator_repository",
-  "version": "1.0.27",
+  "version": "1.0.29",
   "addons": [
     {
       "name": "3D Blueprint Generator",
