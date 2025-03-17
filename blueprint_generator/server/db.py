@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pymysql
 from pymysql.cursors import DictCursor
 
-from config import load_config
+from .config import load_config
 
 logger = logging.getLogger(__name__)
 config = load_config()
@@ -58,7 +58,7 @@ def execute_write_query(query: str, params: Optional[Tuple] = None) -> int:
 def get_sensor_readings(time_window: int = 300) -> List[Dict[str, Any]]:
     """Get recent sensor readings within the specified time window."""
     query = """
-    SELECT * FROM bluetooth_readings 
+    SELECT * FROM bluetooth_readings
     WHERE timestamp >= NOW() - INTERVAL %s SECOND
     ORDER BY timestamp DESC
     """
@@ -72,7 +72,7 @@ def save_sensor_reading(
 ) -> bool:
     """Save a new sensor reading."""
     query = """
-    INSERT INTO bluetooth_readings 
+    INSERT INTO bluetooth_readings
     (timestamp, sensor_id, rssi, device_id, sensor_location)
     VALUES (NOW(), %s, %s, %s, %s)
     """
@@ -89,7 +89,7 @@ def save_sensor_reading(
 def save_blueprint_update(blueprint_data: Dict[str, Any]) -> bool:
     """Save a blueprint update."""
     query = """
-    INSERT INTO manual_updates 
+    INSERT INTO manual_updates
     (update_type, entity_id, data, timestamp)
     VALUES ('blueprint', %s, %s, NOW())
     ON DUPLICATE KEY UPDATE

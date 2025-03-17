@@ -19,6 +19,7 @@ COPY . /opt/blueprint_generator/
 WORKDIR /opt/blueprint_generator
 
 # Copy nginx configuration
+RUN adduser --system --no-create-home --shell /bin/false --group --disabled-login nginx
 COPY nginx.conf /etc/nginx/nginx.conf
 
 # Create log directories
