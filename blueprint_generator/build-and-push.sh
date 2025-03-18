@@ -65,9 +65,9 @@ docker push ghcr.io/delicioushouse/blueprint-generator-amd64:latest
 # Add all changes in blueprint_generator directory
 git add -A
 git commit -m "Update Blueprint Generator to version $VERSION"
-git config --local credential.helper store
-git config --local credential.username DeliciousHouse
-echo "https://DeliciousHouse:${GITHUB_TOKEN}@github.com" | git credential approve
+# git config --local credential.helper store
+# git config --local credential.username DeliciousHouse
+# echo "https://DeliciousHouse:${GITHUB_TOKEN}@github.com" | git credential approve
 git push origin main
 
 echo "Successfully built, pushed and updated version $VERSION"
