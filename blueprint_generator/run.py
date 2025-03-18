@@ -56,7 +56,7 @@ def main():
 
         # Start API server
         host = config.get('api', {}).get('host', '0.0.0.0')
-        port = config.get('api', {}).get('port', 8000)
+        port = config.get('api', {}).get('port', 5000)
         debug = config.get('api', {}).get('debug', False)
 
         logger.info(f"Starting API server on {host}:{port}")
