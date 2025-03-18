@@ -57,15 +57,33 @@ class BluetoothProcessor:
         try:
             # Try template endpoint to get areas
             template_data = {
-                "template": "{% set result = namespace(areas=[]) %}{% for area in areas() %}{% set area_data = {'area_id': area.id, 'name': area.name} %}{% set result.areas = result.areas + [area_data] %}{% endfor %}{{ result.areas | to_json }}"
+                "template": """
+                {% set result = namespace(areas=[]) %}
+                {% for area in areas() %}
+                    {% set area_data = {'area_id': area.id, 'name': area.name} %}
+                    {% set result.areas = result.areas + [area_data] %}
+                {% endfor %}
+                {{ result.areas | to_json }}
+                """
             }
-
             logger.info("Attempting to get areas using template API")
             response = requests.post(
                 f"{ha_client.base_url}/api/template",
                 headers=ha_client.headers,
                 json=template_data
             )
+
+            # Always use fallback grid - the template API is failing
+            logger.warning("Using fallback grid for sensor positions")
+            areas = [
+                {"area_id": "lounge", "name": "Lounge"},
+                {"area_id": "kitchen", "name": "Kitchen"},
+                {"area_id": "master_bedroom", "name": "Master Bedroom"},
+                {"area_id": "master_bathroom", "name": "Master Bathroom"},
+                {"area_id": "office", "name": "Office"},
+                {"area_id": "dining_room", "name": "Dining Room"}
+            ]
+
 
             if response.status_code == 200:
                 try:
@@ -223,10 +241,10 @@ class BluetoothProcessor:
                     continue
 
                 entity_id = device.get('entity_id')
+                sensor_location = {'x': 0, 'y': 0, 'z': 0}  # Default value
                 if device_id not in ble_device_map:
                     ble_device_map[device_id] = []
 
-                sensor_location = {'x': 0, 'y': 0, 'z': 0}  # Default value
 
                 # Try to get location from entity attributes or known mapping
                 if 'sensor_location' in device.get('attributes', {}):
@@ -328,15 +346,14 @@ class BluetoothProcessor:
         try:
             # Use ML model if enabled
             if self.use_ml_distance:
-                # Get environment type based on sensor ID if available
-                environment_type = None
+                # Better environment type detection
+                environment_type = 'indoor'  # Default assumption
+
+                # Check entity_id for better location hints
                 if sensor_id:
-                    # This is a placeholder - in a real implementation, you might
-                    # determine environment type based on sensor location or metadata
-                    if 'outdoor' in sensor_id.lower():
+                    if any(outdoor_term in sensor_id.lower() for outdoor_term in
+                           ['outdoor', 'exterior', 'outside', 'yard', 'garden', 'patio']):
                         environment_type = 'outdoor'
-                    elif 'indoor' in sensor_id.lower():
-                        environment_type = 'indoor'
 
                 # Try to get distance from ML model
                 distance = self.ai_processor.estimate_distance(
@@ -347,18 +364,40 @@ class BluetoothProcessor:
                 # If we got a valid distance, return it
                 if distance > 0:
                     logger.debug(f"Using ML model for distance estimation: RSSI {rssi} -> {distance:.2f}m")
-                    return distance
-
-                # Otherwise log and fall back to physics model
-                logger.debug("ML distance estimation failed, falling back to physics model")
+                    return min(distance, 30.0)  # Cap at reasonable maximum
 
         except Exception as e:
             logger.warning(f"Error using ML model for distance estimation: {str(e)}")
 
-        # Fall back to physics-based model
-        distance = 10 ** ((self.reference_power - rssi) / (10 * self.path_loss_exponent))
-        logger.debug(f"Using physics model for distance estimation: RSSI {rssi} -> {distance:.2f}m")
-        return distance
+        # Safety checks before physics calculation
+        try:
+            # Ensure valid RSSI and cap extreme values
+            if not isinstance(rssi, (int, float)):
+                rssi = -70  # Default if not a number
+
+            # Cap RSSI at reasonable bounds
+            rssi = max(min(rssi, -30), -100)
+
+            # Calculate exponent with protection against overflow
+            exponent = (self.reference_power - rssi) / (10 * self.path_loss_exponent)
+
+            # Prevent extreme values that would cause overflow
+            if exponent > 6:  # 10^6 is million meters = 1000km (more than enough)
+                logger.warning(f"Capping extreme distance calculation: RSSI={rssi}, exponent={exponent}")
+                return 100.0  # Cap distance at 100m
+
+            # Safe calculation
+            distance = 10 ** exponent
+
+            # Ensure reasonable result
+            distance = min(max(distance, 0.1), 100.0)  # Between 10cm and 100m
+
+            logger.debug(f"Using physics model for distance estimation: RSSI {rssi} -> {distance:.2f}m")
+            return distance
+
+        except Exception as e:
+            logger.warning(f"Physics-based distance calculation failed: {str(e)}")
+            return 5.0  # Default reasonable distance
 
     def _trilaterate(self, readings: List[Dict]) -> Optional[Dict[str, float]]:
         """Estimate device position using trilateration."""
