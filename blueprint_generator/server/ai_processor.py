@@ -4,6 +4,7 @@ import math
 import os
 import pickle
 import uuid
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from statistics import median
@@ -249,6 +250,7 @@ class AIProcessor:
                 device_type = 'wearable'
 
             # Execute the database insertion with added features
+            from .db import get_sqlite_connection
             conn = get_sqlite_connection()
             cursor = conn.cursor()
             cursor.execute('''
@@ -460,8 +462,8 @@ class AIProcessor:
         try:
             if self.rssi_distance_model is None:
                 # Fall back to physics-based model
-                reference_power = -59  # Default reference power at 1m
-                path_loss_exponent = 2.0  # Default path loss exponent
+                reference_power = -66  # Default reference power at 1m
+                path_loss_exponent = 2.8  # Default path loss exponent
                 return 10 ** ((reference_power - rssi) / (10 * path_loss_exponent))
 
             # Prepare input features
@@ -497,8 +499,8 @@ class AIProcessor:
         except Exception as e:
             logger.error(f"Error estimating distance: {str(e)}")
             # Fall back to physics-based model
-            reference_power = -59
-            path_loss_exponent = 2.0
+            reference_power = -66
+            path_loss_exponent = 2.8
             return 10 ** ((reference_power - rssi) / (10 * path_loss_exponent))
 
     def calibrate_rssi_reference_values(self):
@@ -1485,6 +1487,7 @@ class AIProcessor:
     def detect_movement_patterns(self):
         """Detect device movement patterns to improve position accuracy."""
         try:
+            from .db import get_sqlite_connection
             conn = get_sqlite_connection()
             cursor = conn.cursor()
 
