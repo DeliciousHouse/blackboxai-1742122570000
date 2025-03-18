@@ -517,3 +517,83 @@ class HomeAssistantClient:
         response_received.wait(timeout=10)
 
         return entities
+
+    def get_entity_registry(self):
+        """Get entity registry with multiple fallback methods."""
+        try:
+            # Try WebSocket first (already working)
+            registry = self.get_entity_registry_websocket()
+            if registry:
+                logger.info(f"Successfully retrieved {len(registry)} entities from WebSocket")
+                return registry
+
+            # Check if we're running in Supervisor environment
+            is_supervisor = os.environ.get('SUPERVISOR_TOKEN') is not None
+
+            if is_supervisor:
+                # Try Supervisor-specific APIs
+                logger.info("Running in Supervisor environment, trying Supervisor API")
+
+                # Try direct Supervisor API endpoint
+                try:
+                    registry = self.safe_json_request("http://supervisor/core/api/states", self.headers)
+                    if registry:
+                        # Convert to registry format
+                        result = []
+                        for state in registry:
+                            if 'entity_id' in state:
+                                entity_id = state['entity_id']
+                                domain, entity = entity_id.split('.', 1)
+                                result.append({
+                                    'entity_id': entity_id,
+                                    'name': state.get('attributes', {}).get('friendly_name', entity),
+                                    'domain': domain,
+                                    'area_id': state.get('attributes', {}).get('area', None)
+                                })
+                        logger.info(f"Created {len(result)} registry entries from Supervisor states")
+                        return result
+                except Exception as e:
+                    logger.warning(f"Supervisor states API failed: {e}")
+
+            # Continue with existing fallbacks...
+            # Try GET API
+            logger.info("Trying GET API for entity registry")
+            registry = self.safe_json_request(f"{self.base_url}/api/config/entity_registry", self.headers)
+            if registry:
+                return registry
+
+            # Try POST API - some versions use this
+            logger.info("Trying POST API for entity registry")
+            response = requests.post(
+                f"{self.base_url}/api/config/entity_registry/list",
+                headers=self.headers
+            )
+            if response.status_code == 200:
+                return response.json()
+
+            # Final fallback - extract from states
+            logger.info("Falling back to state-based entity registry")
+            states = self.safe_json_request(f"{self.base_url}/api/states", self.headers)
+
+            # Convert states to registry-like format
+            registry = []
+            for state in states:
+                if 'entity_id' in state:
+                    # Extract basic info
+                    entity_id = state['entity_id']
+                    domain, entity = entity_id.split('.', 1)
+
+                    # Create registry entry
+                    registry.append({
+                        'entity_id': entity_id,
+                        'name': state.get('attributes', {}).get('friendly_name', entity),
+                        'domain': domain,
+                        'area_id': state.get('attributes', {}).get('area', None)
+                    })
+
+            logger.info(f"Created {len(registry)} registry entries from states")
+            return registry
+
+        except Exception as e:
+            logger.error(f"All entity registry methods failed: {e}")
+            return []

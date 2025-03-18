@@ -129,8 +129,7 @@ class BluetoothProcessor:
 
             # Get devices and their area assignments
             entities = requests.get(f"{ha_client.base_url}/api/states", headers=ha_client.headers).json()
-            registry = safe_json_request(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers)
-
+            registry = ha_client.get_entity_registry()
             # Create a map of entity_id to area_id
             entity_areas = {}
             for item in registry:
@@ -219,40 +218,65 @@ class BluetoothProcessor:
             distance_readings = []
             for device in ble_devices:
                 try:
-                    if ('entity_id' in device and 'state' in device and
-                        ('distance_to' in device['entity_id'] or 'ble_distance' in device['entity_id'])):
+                    entity_id = device.get('entity_id', '').lower()
 
-                        # Extract device ID and sensor ID from entity_id
-                        parts = device['entity_id'].split('_')
-                        if len(parts) >= 4:
-                            device_id = parts[0] + "_" + parts[1]  # e.g., "madisons_iphone"
-                            sensor_id = '_'.join(parts[3:])  # e.g., "bathroom_ble"
+                    # Log more details about what we're processing
+                    logger.debug(f"Processing entity: {entity_id} with state {device.get('state')}")
 
-                            # Get distance value
-                            try:
-                                distance = float(device['state'])
-                                # Convert to meters if needed
-                                if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
-                                    distance *= 0.3048  # Convert feet to meters
+                    # More flexible entity pattern matching
+                    is_distance_entity = (
+                        'distance' in entity_id or
+                        'ble_distance' in entity_id or
+                        'distance_to' in entity_id
+                    )
 
-                                # Find sensor position
-                                sensor_position = None
-                                for s_id, pos in sensor_positions.items():
-                                    if sensor_id in s_id:
-                                        sensor_position = pos
-                                        break
+                    if is_distance_entity and 'state' in device:
+                        # Try more flexible pattern matching for device/sensor IDs
+                        if '_distance_to_' in entity_id:
+                            parts = entity_id.split('_distance_to_')
+                            device_id = parts[0]
+                            sensor_id = parts[1]
+                        elif '_ble_distance_' in entity_id:
+                            parts = entity_id.split('_ble_distance_')
+                            device_id = parts[0]
+                            sensor_id = parts[1]
+                        else:
+                            # Extract device ID and sensor ID using more flexible pattern
+                            parts = entity_id.split('_')
+                            if len(parts) >= 3:
+                                device_id = '_'.join(parts[0:2])  # e.g., "sensor_madisons"
+                                sensor_id = '_'.join(parts[2:])   # e.g., "bathroom_ble"
+                            else:
+                                continue  # Skip if pattern doesn't match
 
-                                if sensor_position:
-                                    # Create a reading entry
-                                    distance_readings.append({
-                                        'device_id': device_id,
-                                        'sensor_id': sensor_id,
-                                        'distance': distance,
-                                        'sensor_location': sensor_position
-                                    })
-                                    logger.info(f"Found distance reading: {device_id} to {sensor_id}: {distance}m")
-                            except (ValueError, TypeError):
-                                pass
+                        # Log what we found
+                        logger.debug(f"Extracted device_id: {device_id}, sensor_id: {sensor_id}")
+
+                        # Rest of your processing code...
+                        try:
+                            distance = float(device['state'])
+                            # Convert to meters if needed
+                            if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
+                                distance *= 0.3048  # Convert feet to meters
+
+                            # Find sensor position
+                            sensor_position = None
+                            for s_id, pos in sensor_positions.items():
+                                if sensor_id in s_id:
+                                    sensor_position = pos
+                                    break
+
+                            if sensor_position:
+                                # Create a reading entry
+                                distance_readings.append({
+                                    'device_id': device_id,
+                                    'sensor_id': sensor_id,
+                                    'distance': distance,
+                                    'sensor_location': sensor_position
+                                })
+                                logger.info(f"Found distance reading: {device_id} to {sensor_id}: {distance}m")
+                        except (ValueError, TypeError):
+                            pass
                 except Exception as e:
                     logger.warning(f"Error processing BLE device: {e}")
 
