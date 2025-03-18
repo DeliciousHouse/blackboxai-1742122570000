@@ -219,6 +219,18 @@ class BluetoothProcessor:
             # Use position entities directly instead of calculating from RSSI
             device_positions = {}
 
+            # Debug logging to see what we're getting
+            logger.info(f"Position entities type: {type(position_entities)}")
+            logger.info(f"Position entities count: {len(position_entities) if position_entities else 0}")
+            if position_entities and len(position_entities) > 0:
+                # Log a sample position entity
+                if isinstance(position_entities, dict):
+                    sample_key = list(position_entities.keys())[0]
+                    sample = position_entities[sample_key]
+                else:
+                    sample = position_entities[0]
+                logger.info(f"Sample position entity structure: {sample}")
+
             # Handle position_entities whether it's a list or dictionary
             if isinstance(position_entities, dict):
                 # Process as dictionary
