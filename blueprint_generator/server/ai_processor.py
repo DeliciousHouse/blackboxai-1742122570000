@@ -47,6 +47,8 @@ class AIProcessor:
         self.wall_prediction_model = None
         self.blueprint_refinement_model = None
 
+        # Create database tables
+        self._create_tables()  # Add this line
         # Load models if they exist
         self._load_models()
 
@@ -91,79 +93,46 @@ class AIProcessor:
             }
         }
 
-    def setup_database_tables(self) -> bool:
-        """Set up database tables for AI training data."""
+    def _create_tables(self) -> bool:
+        """Create necessary database tables."""
         try:
-            # Create table for RSSI-to-distance training data
-            execute_write_query("""
-            CREATE TABLE IF NOT EXISTS ai_rssi_distance_data (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                device_id VARCHAR(255) NOT NULL,
-                sensor_id VARCHAR(255) NOT NULL,
-                rssi INT NOT NULL,
-                distance FLOAT NOT NULL,
-                tx_power INT,
-                frequency FLOAT,
-                environment_type VARCHAR(50),
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
+            from .db import get_sqlite_connection
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
 
-            # Create table for room clustering training data
-            execute_write_query("""
-            CREATE TABLE IF NOT EXISTS ai_room_clustering_data (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                device_id VARCHAR(255) NOT NULL,
-                x FLOAT NOT NULL,
-                y FLOAT NOT NULL,
-                z FLOAT NOT NULL,
-                room_label VARCHAR(255),
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            # Create RSSI distance samples table - use THIS name not ai_rssi_distance_data
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS rssi_distance_samples (
+                id INTEGER PRIMARY KEY,
+                device_id TEXT,
+                sensor_id TEXT,
+                rssi INTEGER,
+                distance REAL,
+                tx_power INTEGER,
+                frequency REAL,
+                environment_type TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-            """)
+            ''')
 
-            # Create table for wall prediction training data
-            execute_write_query("""
-            CREATE TABLE IF NOT EXISTS ai_wall_prediction_data (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                blueprint_id VARCHAR(255) NOT NULL,
-                positions_data TEXT NOT NULL,
-                walls_data TEXT NOT NULL,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            # Create device positions table (for blueprint generator)
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS device_positions (
+                id INTEGER PRIMARY KEY,
+                device_id TEXT,
+                position_data TEXT,
+                source TEXT,
+                accuracy REAL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-            """)
+            ''')
 
-            # Create table for blueprint refinement feedback
-            execute_write_query("""
-            CREATE TABLE IF NOT EXISTS ai_blueprint_feedback (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                blueprint_id VARCHAR(255) NOT NULL,
-                original_blueprint TEXT NOT NULL,
-                modified_blueprint TEXT NOT NULL,
-                feedback_score FLOAT,
-                feedback_comments TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-
-            # Create table for trained models
-            execute_write_query("""
-            CREATE TABLE IF NOT EXISTS ai_models (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                model_name VARCHAR(255) NOT NULL,
-                model_type VARCHAR(255) NOT NULL,
-                model_path VARCHAR(255) NOT NULL,
-                metrics TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY (model_name)
-            )
-            """)
-
+            conn.commit()
+            conn.close()
             logger.info("AI database tables created successfully")
             return True
-
         except Exception as e:
-            logger.error(f"Failed to set up AI database tables: {str(e)}")
+            logger.error(f"Error creating database tables: {str(e)}")
             return False
 
     def _load_models(self) -> None:
@@ -239,7 +208,7 @@ class AIProcessor:
 
     # RSSI-to-Distance ML Model methods
 
-    def save_rssi_distance_sample(self, device_id: str, sensor_id: str, rssi: int,
+    def rssi_distance_samples(self, device_id: str, sensor_id: str, rssi: int,
                                  distance: float, tx_power: Optional[int] = None,
                                  frequency: Optional[float] = None,
                                  environment_type: Optional[str] = None) -> bool:
