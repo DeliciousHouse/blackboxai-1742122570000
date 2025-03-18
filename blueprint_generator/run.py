@@ -80,7 +80,7 @@ def start_processing_scheduler():
                 if result.get('device_positions'):
                     logger.info("Generating blueprint from processed data")
                     blueprint = blueprint_generator.generate_blueprint(
-                        device_positions=result.get('device_positions', {}),
+                        positions=result.get('device_positions', {}),  # Changed from device_positions to positions
                         rooms=result.get('rooms', [])
                     )
                     logger.info(f"Blueprint generated with {len(blueprint.get('rooms', []))} rooms")
@@ -111,7 +111,7 @@ def main():
 
         start_processing_scheduler()
         logger.info("Background processing started")
-        
+
         # Start API server
         host = config.get('api', {}).get('host', '0.0.0.0')
         port = config.get('api', {}).get('port', 5000)

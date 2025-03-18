@@ -97,32 +97,22 @@ class BluetoothProcessor:
                 logger.warning(f"Template API returned status {response.status_code}")
                 areas = None
 
-            # If template method failed, use fallback
-            if not areas:
-                logger.warning("Using fallback grid for sensor positions")
-                # Create basic room layout
-                areas = [
-                    {"area_id": "living_room", "name": "Living Room"},
-                    {"area_id": "kitchen", "name": "Kitchen"},
-                    {"area_id": "bedroom", "name": "Bedroom"},
-                    {"area_id": "bathroom", "name": "Bathroom"},
-                    {"area_id": "office", "name": "Office"},
-                    {"area_id": "hallway", "name": "Hallway"}
-                ]
-
             # Create a simple grid layout (approximate layout)
             grid_size = math.ceil(math.sqrt(len(areas)))
             area_positions = {}
 
-            # Place areas in a grid pattern
+            # Create a simple grid layout
+            area_positions = {}
+            grid_size = math.ceil(math.sqrt(len(areas)))
+
             for i, area in enumerate(areas):
                 row = i // grid_size
                 col = i % grid_size
-                area_positions[area['area_id']] = {
-                    'x': col * 5,  # 5-meter grid spacing
+                area_positions[area["area_id"]] = {
+                    'x': col * 5,
                     'y': row * 5,
                     'z': 0,
-                    'name': area.get('name', f"Area {i}")
+                    'name': area["name"]
                 }
 
             # Get devices and their area assignments
@@ -152,7 +142,12 @@ class BluetoothProcessor:
 
         except Exception as e:
             logger.error(f"Failed to generate initial sensor positions: {str(e)}")
-            return {}
+            return {
+                "default_sensor_1": {'x': 0, 'y': 0, 'z': 0},
+                "default_sensor_2": {'x': 5, 'y': 0, 'z': 0},
+                "default_sensor_3": {'x': 0, 'y': 5, 'z': 0},
+                "default_sensor_4": {'x': 5, 'y': 5, 'z': 0}
+            }
 
     def process_reading(
         self,

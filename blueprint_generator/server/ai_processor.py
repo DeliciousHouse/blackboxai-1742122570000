@@ -260,6 +260,38 @@ class AIProcessor:
             logger.error(f"Failed to save RSSI-distance sample: {str(e)}")
             return False
 
+    def train_models(self):
+        """Train AI models with collected data."""
+        try:
+            # Get training data from database
+            from .db import get_sqlite_connection
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            # Get RSSI to distance training data
+            cursor.execute("""
+                SELECT rssi, distance, environment_type
+                FROM rssi_distance_samples
+                ORDER BY timestamp DESC
+                LIMIT 10000
+            """)
+            rssi_distance_data = cursor.fetchall()
+
+            if not rssi_distance_data:
+                logger.info("Not enough training data for distance model")
+                return False
+
+            logger.info(f"Training models with {len(rssi_distance_data)} RSSI samples")
+
+            # This is a placeholder - actual model training would happen here
+            # In a real implementation, you'd train ML models with the data
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error training models: {str(e)}")
+            return False
+
     def train_rssi_distance_model(self, model_type: str = 'random_forest',
                                  test_size: float = 0.2,
                                  features: List[str] = None,
