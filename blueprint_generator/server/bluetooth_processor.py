@@ -218,27 +218,42 @@ class BluetoothProcessor:
 
             # Use position entities directly instead of calculating from RSSI
             device_positions = {}
-            for entity_id, data in position_entities.items():
-                if 'attributes' in data and 'position' in data['attributes']:
-                    position = data['attributes']['position']
 
-                    # Convert units if needed (feet → meters)
-                    x = float(position.get('x', 0))
-                    y = float(position.get('y', 0))
-                    z = float(position.get('z', 0))
+            # Handle position_entities whether it's a list or dictionary
+            if isinstance(position_entities, dict):
+                # Process as dictionary
+                for entity_id, data in position_entities.items():
+                    if 'attributes' in data and 'position' in data['attributes']:
+                        position = data['attributes']['position']
 
-                    if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
-                        x *= 0.3048
-                        y *= 0.3048
-                        z *= 0.3048
+                        # Convert units and add to positions
+                        # [rest of your existing processing code]
 
-                    device_positions[entity_id] = {
-                        'x': x,
-                        'y': y,
-                        'z': z,
-                        'accuracy': float(position.get('accuracy', 5.0)),
-                        'source': 'bermuda'
-                    }
+            elif isinstance(position_entities, list):
+                # Process as list
+                for entity in position_entities:
+                    if isinstance(entity, dict) and 'entity_id' in entity:
+                        entity_id = entity['entity_id']
+                        if 'attributes' in entity and 'position' in entity['attributes']:
+                            position = entity['attributes']['position']
+
+                            # Convert units if needed (feet → meters)
+                            x = float(position.get('x', 0))
+                            y = float(position.get('y', 0))
+                            z = float(position.get('z', 0))
+
+                            if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
+                                x *= 0.3048
+                                y *= 0.3048
+                                z *= 0.3048
+
+                            device_positions[entity_id] = {
+                                'x': x,
+                                'y': y,
+                                'z': z,
+                                'accuracy': float(position.get('accuracy', 5.0)),
+                                'source': 'bermuda'
+                            }
 
             # Apply movement pattern detection
             movement_patterns = self.ai_processor.detect_movement_patterns()
