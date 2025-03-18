@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blueprint Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #error-message {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="blueprint-container"></div>
+    <div id="error-message"></div>
+    <script>
+        // Blueprint data from server
+        let blueprintData;
+
+        try {
+            blueprintData = JSON.parse('{{ blueprint|tojson|safe }}');
+            console.log("Loaded blueprint data:", blueprintData);
+        } catch (e) {
+            showError("Failed to parse blueprint data: " + e.message);
+        }
+
+        // Set up Three.js scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f0f0);
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 10, 10);
+        camera.lookAt(0, 0, 0);
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('blueprint-container').appendChild(renderer.domElement);
+
+        // Lighting
+        const light = new THREE.AmbientLight(0x404040);
+        scene.add(light);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        scene.add(directionalLight);
+
+        // Grid helper
+        const gridHelper = new THREE.GridHelper(20, 20);
+        scene.add(gridHelper);
+
+        // Render rooms from blueprint data
+        try {
+            if (blueprintData && blueprintData.rooms && blueprintData.rooms.length) {
+                blueprintData.rooms.forEach(room => {
+                    if (!room.dimensions) {
+                        console.warn("Room missing dimensions:", room);
+                        return;
+                    }
+
+                    const length = room.dimensions.length || 5;
+                    const height = room.dimensions.height || 2.5;
+                    const width = room.dimensions.width || 4;
+
+                    const geometry = new THREE.BoxGeometry(length, height, width);
+                    const material = new THREE.MeshBasicMaterial({
+                        color: 0x9bc4e2,
+                        wireframe: true,
+                        transparent: true,
+                        opacity: 0.5
+                    });
+                    const cube = new THREE.Mesh(geometry, material);
+                    scene.add(cube);
+                });
+            } else {
+                showError("No rooms found in blueprint data");
+            }
+        } catch (e) {
+            showError("Error rendering rooms: " + e.message);
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function showError(message) {
+            console.error(message);
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

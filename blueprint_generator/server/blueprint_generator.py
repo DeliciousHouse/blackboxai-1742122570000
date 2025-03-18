@@ -1,12 +1,15 @@
 import json
 import logging
 from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+import uuid
 
 import numpy as np
 from scipy.spatial import Delaunay
 
 from .bluetooth_processor import BluetoothProcessor
-from .db import get_latest_blueprint, save_blueprint_update
+from .ai_processor import AIProcessor
+from .db import get_latest_blueprint, save_blueprint_update, execute_query, execute_write_query
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +19,14 @@ class BlueprintGenerator:
     def __init__(self, config_path: Optional[str] = None):
         """Initialize the blueprint generator."""
         self.bluetooth_processor = BluetoothProcessor(config_path)
+        self.ai_processor = AIProcessor(config_path)
         self.config = self._load_config(config_path)
         self.validation = self.config['blueprint_validation']
+        self.status = {"state": "idle", "progress": 0}
+        self.latest_job_id = None
+
+        # Initialize AI database tables if needed
+        self.ai_processor.setup_database_tables()
 
     def _load_config(self, config_path: Optional[str] = None) -> Dict:
         """Load configuration from file or use defaults."""
@@ -34,46 +43,102 @@ class BlueprintGenerator:
                 'max_wall_thickness': 0.5,
                 'min_ceiling_height': 2.2,
                 'max_ceiling_height': 4.0
+            },
+            'ai_settings': {
+                'use_ml_wall_prediction': True,
+                'use_ml_blueprint_refinement': True,
+                'training_data_collection': True
             }
         }
 
-    def generate_blueprint(self, time_window: int = 300) -> Optional[Dict]:
-        """Generate a new blueprint based on recent readings."""
-        # Get device positions
-        positions = self.bluetooth_processor.estimate_positions(time_window)
-        if not positions:
-            logger.warning("No valid positions found for blueprint generation")
-            return None
+    def generate_blueprint(self, time_window=3600):
+        """Generate a blueprint using position data from integrations."""
+        try:
+            job_id = str(uuid.uuid4())
+            self.latest_job_id = job_id
+            self.status = {"state": "processing", "progress": 10, "job_id": job_id}
 
-        # Detect rooms
-        rooms = self.bluetooth_processor.detect_rooms(positions)
+            # First check for Bermuda positions
+            query = """
+            SELECT device_id, position_data FROM device_positions
+            WHERE source = 'bermuda' AND timestamp > NOW() - INTERVAL %s SECOND
+            """
+            bermuda_positions = {row[0]: json.loads(row[1]) for row in execute_query(query, (time_window,))}
+
+            # Basic blueprint structure
+            blueprint = {
+                "id": job_id,
+                "timestamp": datetime.now().isoformat(),
+                "rooms": [
+                    {"id": "living_room", "name": "Living Room", "dimensions": {"length": 5, "width": 4, "height": 2.5}}
+                ],
+                "walls": [],
+                "devices": []
+            }
+
+            # Add devices from Bermuda positions
+            if bermuda_positions:
+                logger.info(f"Using {len(bermuda_positions)} positions from Bermuda")
+                for device_id, position in bermuda_positions.items():
+                    blueprint["devices"].append({
+                        "id": device_id,
+                        "position": position,
+                        "source": "bermuda"
+                    })
+            else:
+                # Fall back to raw readings if no Bermuda positions
+                logger.warning("No valid positions found for blueprint generation")
+
+                # Get device positions using the bluetooth processor
+                positions = self.bluetooth_processor.estimate_positions(time_window)
+                if positions:
+                    # Detect rooms
+                    rooms = self.bluetooth_processor.detect_rooms(positions)
+                    if rooms:
+                        blueprint['rooms'] = rooms
+                        blueprint['positions'] = positions
+
+                        # Generate walls using AI-enhanced prediction
+                        blueprint['walls'] = self._generate_walls(rooms, positions)
+
+                        # Apply AI-based blueprint refinement if enabled
+                        if self.config.get('ai_settings', {}).get('use_ml_blueprint_refinement', True):
+                            blueprint = self._refine_blueprint(blueprint)
+
+            # Store blueprint in database
+            self._save_blueprint(blueprint)
+
+            self.status = {"state": "completed", "progress": 100, "job_id": job_id}
+            return {"job_id": job_id}
+
+        except Exception as e:
+            self.status = {"state": "error", "error": str(e)}
+            logger.error(f"Blueprint generation failed: {str(e)}")
+            raise
+
+    def _generate_walls(self, rooms: List[Dict], positions: Optional[Dict[str, Dict[str, float]]] = None) -> List[Dict]:
+        """Generate walls between rooms using AI prediction when available."""
         if not rooms:
-            logger.warning("No rooms detected for blueprint generation")
-            return None
+            return []
 
-        # Generate walls
-        walls = self._generate_walls(rooms)
+        # Check if ML wall prediction is enabled
+        use_ml = self.config.get('ai_settings', {}).get('use_ml_wall_prediction', True)
 
-        # Validate blueprint
-        blueprint = {
-            'rooms': rooms,
-            'walls': walls,
-            'positions': positions
-        }
+        if use_ml and positions:
+            try:
+                # Try to use the ML-based wall prediction
+                walls = self.ai_processor.predict_walls(positions, rooms)
+                if walls:
+                    logger.debug(f"Using ML-based wall prediction: generated {len(walls)} walls")
+                    return walls
+            except Exception as e:
+                logger.warning(f"ML-based wall prediction failed: {str(e)}")
 
-        if not self._validate_blueprint(blueprint):
-            logger.error("Generated blueprint failed validation")
-            return None
+        # Fall back to Delaunay triangulation
+        logger.debug("Using Delaunay triangulation for wall generation")
 
-        # Save blueprint
-        if save_blueprint_update(blueprint):
-            return blueprint
-        return None
-
-    def _generate_walls(self, rooms: List[Dict]) -> List[Dict]:
-        """Generate walls between rooms."""
         walls = []
-        
+
         # Extract room vertices
         vertices = []
         for room in rooms:
@@ -103,11 +168,11 @@ class BlueprintGenerator:
         for edge in edges:
             p1 = vertices[edge[0]]
             p2 = vertices[edge[1]]
-            
+
             # Calculate wall properties
             length = np.linalg.norm(p2 - p1)
             angle = np.arctan2(p2[1] - p1[1], p2[0] - p1[0])
-            
+
             # Skip walls that are too short or too long
             if length < self.validation['min_room_dimension'] or \
                length > self.validation['max_room_dimension']:
@@ -168,12 +233,69 @@ class BlueprintGenerator:
 
     def get_latest_blueprint(self) -> Optional[Dict]:
         """Get the latest saved blueprint."""
-        return get_latest_blueprint()
+        try:
+            query = """
+            SELECT data FROM blueprints
+            ORDER BY created_at DESC LIMIT 1
+            """
+            result = execute_query(query)
+
+            if not result:
+                return None
+
+            blueprint_data = result[0][0] if isinstance(result[0], tuple) else result[0].get('data')
+
+            # If data is stored as a string, parse it
+            if isinstance(blueprint_data, str):
+                return json.loads(blueprint_data)
+            return blueprint_data
+
+        except Exception as e:
+            logger.error(f"Failed to get latest blueprint: {str(e)}")
+            return None
 
     def update_blueprint(self, blueprint_data: Dict) -> bool:
         """Update blueprint with manual changes."""
         if not self._validate_blueprint(blueprint_data):
             logger.error("Updated blueprint failed validation")
             return False
-        
+
         return save_blueprint_update(blueprint_data)
+
+    def get_status(self):
+        """Get the current status of blueprint generation."""
+        return self.status
+
+    def _refine_blueprint(self, blueprint: Dict) -> Dict:
+        """Refine the blueprint using AI techniques."""
+        try:
+            logger.debug("Applying AI-based blueprint refinement")
+            refined_blueprint = self.ai_processor.refine_blueprint(blueprint)
+
+            # Validate the refined blueprint
+            if self._validate_blueprint(refined_blueprint):
+                logger.debug("AI refinement successful")
+                return refined_blueprint
+            else:
+                logger.warning("AI-refined blueprint failed validation, using original")
+                return blueprint
+
+        except Exception as e:
+            logger.warning(f"Blueprint refinement failed: {str(e)}")
+            return blueprint
+
+    def _save_blueprint(self, blueprint):
+        """Save blueprint to database."""
+        try:
+            # Convert blueprint to JSON string
+            blueprint_json = json.dumps(blueprint)
+
+            # Insert into database
+            query = """
+            INSERT INTO blueprints (data, status)
+            VALUES (%s, 'active')
+            """
+            execute_write_query(query, (blueprint_json,))
+
+        except Exception as e:
+            logger.error(f"Failed to save blueprint: {str(e)}")

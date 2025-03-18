@@ -18,7 +18,9 @@ def get_db_connection():
         user=config['db']['user'],
         password=config['db']['password'],
         database=config['db']['database'],
-        cursorclass=DictCursor
+        cursorclass=DictCursor,
+        ssl_disabled=True
+
     )
 
 def test_connection() -> bool:
