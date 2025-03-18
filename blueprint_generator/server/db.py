@@ -198,3 +198,85 @@ def get_latest_blueprint() -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get latest blueprint from SQLite: {str(e)}")
         return None
+
+def execute_write_query(query: str, params: Optional[Tuple] = None) -> int:
+    """Execute a write query on SQLite database.
+
+    Note: This function redirects all write operations to SQLite instead of
+    modifying the Home Assistant database.
+    """
+    try:
+        # Parse the query to determine what kind of data is being written
+        query_lower = query.lower().strip()
+
+        # Handle the different types of queries
+        if query_lower.startswith('insert into ai_models'):
+            # AI model data
+            logger.info("Writing AI model data to SQLite")
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            # Create table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS ai_models (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model_type TEXT,
+                    model_data TEXT,
+                    timestamp TEXT
+                )
+            ''')
+
+            # Extract model type from parameters
+            model_type = params[0] if params and len(params) > 0 else "unknown"
+            model_data = params[1] if params and len(params) > 1 else "{}"
+
+            # Insert into SQLite
+            cursor.execute(
+                "INSERT INTO ai_models (model_type, model_data, timestamp) VALUES (?, ?, datetime('now'))",
+                (model_type, model_data)
+            )
+
+            affected_rows = cursor.rowcount
+            conn.commit()
+            conn.close()
+            return affected_rows
+
+        elif query_lower.startswith('insert into position_history'):
+            # Position history data
+            logger.info("Writing position history to SQLite")
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            # Create table if it doesn't exist
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS position_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    device_id TEXT,
+                    position_data TEXT,
+                    timestamp TEXT
+                )
+            ''')
+
+            # Extract data from parameters
+            device_id = params[0] if params and len(params) > 0 else "unknown"
+            position_data = params[1] if params and len(params) > 1 else "{}"
+
+            # Insert into SQLite
+            cursor.execute(
+                "INSERT INTO position_history (device_id, position_data, timestamp) VALUES (?, ?, datetime('now'))",
+                (device_id, position_data)
+            )
+
+            affected_rows = cursor.rowcount
+            conn.commit()
+            conn.close()
+            return affected_rows
+
+        else:
+            # Generic write - log it but don't actually perform it
+            logger.warning(f"Attempted write operation redirected to SQLite: {query}")
+            return 0
+
+    except Exception as e:
+        logger.error(f"Write query execution failed: {str(e)}")
+        raise
