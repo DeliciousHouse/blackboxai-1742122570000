@@ -1,5 +1,5 @@
 name: "3D Blueprint Generator"
-version: "1.13"
+version: "1.14"
 slug: "blueprint_generator"
 description: "Generate 3D home blueprints from Bluetooth sensor data"
 url: "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator"
