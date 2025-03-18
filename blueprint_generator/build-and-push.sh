@@ -15,8 +15,8 @@ fi
 CURRENT_VERSION=$(grep 'version:' config.yaml | sed 's/.*"\([0-9.]*\)".*/\1/')
 echo "Current version: $CURRENT_VERSION"
 
-# Increment version by 0.0.01
-NEW_VERSION=$(awk -v ver="$CURRENT_VERSION" 'BEGIN { printf("%.2f", ver + 0.0.01) }')
+# Increment version by 0.01
+NEW_VERSION=$(awk -v ver="$CURRENT_VERSION" 'BEGIN { printf("%.2f", ver + 0.01) }')
 echo "New version: $NEW_VERSION"
 
 # Update version in config.yaml
@@ -63,11 +63,17 @@ docker push ghcr.io/delicioushouse/blueprint-generator-amd64:$VERSION
 docker push ghcr.io/delicioushouse/blueprint-generator-amd64:latest
 
 # Add all changes in blueprint_generator directory
+git config --local credential.helper store
+git config --local credential.username DeliciousHouse
+{
+  echo "url=https://github.com"
+  echo "username=DeliciousHouse"
+  echo "password=${GITHUB_TOKEN}"
+  echo ""
+} | git credential approve
+
 git add -A
 git commit -m "Update Blueprint Generator to version $VERSION"
-# git config --local credential.helper store
-# git config --local credential.username DeliciousHouse
-# echo "https://DeliciousHouse:${GITHUB_TOKEN}@github.com" | git credential approve
 git push origin main
 
 echo "Successfully built, pushed and updated version $VERSION"
