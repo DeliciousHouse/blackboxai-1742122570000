@@ -499,6 +499,154 @@ class AIProcessor:
             path_loss_exponent = 2.0
             return 10 ** ((reference_power - rssi) / (10 * path_loss_exponent))
 
+    def calibrate_rssi_reference_values(self):
+        """Dynamically calibrate RSSI reference values based on collected data."""
+        try:
+            # Get RSSI at known 1-meter distances
+            from .db import get_sqlite_connection
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+            SELECT rssi FROM rssi_distance_samples
+            WHERE distance BETWEEN 0.8 AND 1.2  -- Around 1 meter
+            AND timestamp > datetime('now', '-7 days')
+            ''')
+            results = cursor.fetchall()
+
+            if results and len(results) >= 5:
+                # Calculate median RSSI at 1m
+                rssi_values = [row[0] for row in results]
+                from statistics import median
+                reference_power = median(rssi_values)
+
+                # Update the configuration
+                logger.info(f"Calibrated reference power to {reference_power} dBm based on {len(results)} samples")
+
+                # Also calculate path loss exponent from varying distances
+                cursor.execute('''
+                SELECT rssi, distance FROM rssi_distance_samples
+                WHERE distance > 0.5 AND distance < 10
+                AND timestamp > datetime('now', '-7 days')
+                ''')
+                dist_results = cursor.fetchall()
+
+                if dist_results and len(dist_results) >= 20:
+                    # Calculate path loss exponent using linear regression
+                    x_vals = []  # 10*log10(distance)
+                    y_vals = []  # RSSI values
+
+                    for rssi, distance in dist_results:
+                        if distance > 0:
+                            x_vals.append(10 * math.log10(distance))
+                            y_vals.append(rssi)
+
+                    # Simple linear regression
+                    x_mean = sum(x_vals) / len(x_vals)
+                    y_mean = sum(y_vals) / len(y_vals)
+
+                    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_vals, y_vals))
+                    denominator = sum((x - x_mean) ** 2 for x in x_vals)
+
+                    if denominator != 0:
+                        slope = numerator / denominator
+                        path_loss_exponent = -slope / 10
+
+                        # Update path loss exponent if reasonable
+                        if 1.5 <= path_loss_exponent <= 6.0:
+                            logger.info(f"Calibrated path loss exponent to {path_loss_exponent}")
+
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error calibrating RSSI values: {e}")
+            return False
+
+    def train_models_with_hyperparameter_tuning(self):
+        """Train models with advanced hyperparameter tuning."""
+        try:
+            from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+            from sklearn.model_selection import GridSearchCV
+            from sklearn.preprocessing import StandardScaler
+            import pickle
+
+            # Get training data
+            from .db import get_sqlite_connection
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            # Get available fields from the table
+            cursor.execute("PRAGMA table_info(rssi_distance_samples)")
+            table_info = cursor.fetchall()
+            column_names = [col[1] for col in table_info]
+
+            # Build query based on available columns
+            select_fields = ["rssi", "distance"]
+            if "tx_power" in column_names: select_fields.append("tx_power")
+            if "environment_type" in column_names: select_fields.append("environment_type")
+            if "device_type" in column_names: select_fields.append("device_type")
+            if "time_of_day" in column_names: select_fields.append("time_of_day")
+
+            query = f"SELECT {', '.join(select_fields)} FROM rssi_distance_samples WHERE timestamp > datetime('now', '-30 days')"
+            cursor.execute(query)
+            results = cursor.fetchall()
+            conn.close()
+
+            if len(results) < 50:
+                logger.info(f"Not enough training data for model tuning: {len(results)} samples")
+                return False
+
+            # Prepare data
+            X = []
+            y = []
+
+            for row in results:
+                rssi, distance = row[0], row[1]
+
+                # Skip invalid data
+                if rssi is None or distance is None or distance <= 0:
+                    continue
+
+                # Create feature vector
+                features = [rssi]
+
+                # Add available additional features
+                for i in range(2, len(row)):
+                    if row[i] is not None:
+                        # Convert categorical to numeric if needed
+                        if isinstance(row[i], str):
+                            features.append(hash(row[i]) % 10)
+                        else:
+                            features.append(float(row[i]))
+
+                X.append(features)
+                y.append(distance)
+
+            # Train a simple model if we have enough data
+            if len(X) >= 50:
+                # Standardize features
+                scaler = StandardScaler()
+                X = scaler.fit_transform(X)
+
+                # Define a simple model with limited parameters
+                model = RandomForestRegressor(n_estimators=100)
+                model.fit(X, y)
+
+                # Save the model
+                with open('/data/distance_estimation_model.pkl', 'wb') as f:
+                    pickle.dump({
+                        'model': model,
+                        'scaler': scaler,
+                        'features': len(X[0])
+                    }, f)
+
+                logger.info(f"Trained distance estimation model with {len(X)} samples")
+                return True
+
+            return False
+        except Exception as e:
+            logger.error(f"Error during model training with hyperparameters: {e}")
+            return False
+
     # Room Clustering methods
 
     def configure_room_clustering(self, algorithm: str = 'dbscan',

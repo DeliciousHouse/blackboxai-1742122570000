@@ -4,6 +4,7 @@ import math
 import random
 import requests
 from typing import Dict, List, Optional, Tuple
+from datetime import datetime
 
 import numpy as np
 from scipy.optimize import minimize
@@ -353,7 +354,7 @@ class BluetoothProcessor:
                     logger.error(f"Failed to train models: {str(e)}")
 
             # Apply movement pattern detection to improve accuracy
-            movement_patterns = self.detect_movement_patterns()
+            movement_patterns = self.ai_processor.detect_movement_patterns()
             for device_id, pattern in movement_patterns.items():
                 if device_id in device_positions and pattern.get('static', False):
                     # If device is static, increase confidence in its position
@@ -361,7 +362,7 @@ class BluetoothProcessor:
                         device_positions[device_id]['accuracy'] *= 0.8  # Improve accuracy by 20%
 
             # Apply spatial memory to smooth positions over time
-            device_positions = self.apply_spatial_memory(device_positions)
+            device_positions = self.ai_processor.apply_spatial_memory(device_positions)
 
             # Periodically calibrate RSSI reference values
             # Do this occasionally, not on every run
@@ -607,16 +608,6 @@ class BluetoothProcessor:
             })
 
         return rooms
-
-    # Add these to your BluetoothProcessor class
-
-    def detect_movement_patterns(self):
-        """Detect device movement patterns to improve position accuracy."""
-        # [Insert the detect_movement_patterns function here]
-
-    def apply_spatial_memory(self, device_positions):
-        """Apply spatial memory to improve position estimates."""
-        # [Insert the apply_spatial_memory function here]
 
 # Add this helper function to your bluetooth_processor.py file
 def safe_json_request(url, headers):
