@@ -128,7 +128,7 @@ class BluetoothProcessor:
 
             # Get devices and their area assignments
             entities = requests.get(f"{ha_client.base_url}/api/states", headers=ha_client.headers).json()
-            registry = requests.get(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers).json()
+            registry = safe_json_request(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers)
 
             # Create a map of entity_id to area_id
             entity_areas = {}
@@ -210,7 +210,7 @@ class BluetoothProcessor:
             position_entities = ha_client.get_bermuda_positions()
 
             # Get entity area assignments for room hints
-            registry = requests.get(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers).json()
+            registry = safe_json_request(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers)
             entity_areas = {}
             for item in registry:
                 if 'entity_id' in item and 'area_id' in item and item['area_id']:
@@ -587,3 +587,31 @@ class BluetoothProcessor:
             })
 
         return rooms
+
+# Add this helper function to your bluetooth_processor.py file
+def safe_json_request(url, headers):
+    """Safely get and parse JSON from a request, handling potential malformation."""
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            logger.warning(f"Request failed with status {response.status_code}: {url}")
+            return []
+
+        # Try to clean up the response if needed
+        content = response.text.strip()
+        if content.startswith('\n'):
+            content = content.lstrip()
+
+        # Handle potential HTML responses
+        if content.startswith('<!DOCTYPE') or content.startswith('<html'):
+            logger.warning(f"Got HTML response instead of JSON: {url}")
+            return []
+
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
+        logger.debug(f"Response content preview: {response.text[:100]}...")
+        return []
+    except Exception as e:
+        logger.error(f"Request error: {e}")
+        return []
