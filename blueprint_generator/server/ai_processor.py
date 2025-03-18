@@ -99,7 +99,7 @@ class AIProcessor:
             conn = get_sqlite_connection()
             cursor = conn.cursor()
 
-            # Create RSSI distance samples table - use THIS name not ai_rssi_distance_data
+            # Create enhanced RSSI distance samples table with additional fields
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS rssi_distance_samples (
                 id INTEGER PRIMARY KEY,
@@ -110,6 +110,9 @@ class AIProcessor:
                 tx_power INTEGER,
                 frequency REAL,
                 environment_type TEXT,
+                device_type TEXT,
+                time_of_day INTEGER,
+                day_of_week INTEGER,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
             ''')
@@ -226,6 +229,39 @@ class AIProcessor:
             return True
         except Exception as e:
             logger.error(f"Failed to save RSSI-distance sample: {str(e)}")
+            return False
+
+    def save_rssi_distance_sample(self, device_id, sensor_id, rssi, distance, **kwargs):
+        """Save RSSI-distance sample with enhanced metadata."""
+        try:
+            # Add these additional features
+            current_time = datetime.now()
+            time_of_day = current_time.hour
+            day_of_week = current_time.weekday()
+
+            # Extract device type from device_id if possible
+            device_type = 'unknown'
+            if 'phone' in device_id.lower() or 'iphone' in device_id.lower():
+                device_type = 'smartphone'
+            elif 'watch' in device_id.lower():
+                device_type = 'wearable'
+
+            # Execute the database insertion with added features
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+            cursor.execute('''
+            INSERT INTO rssi_distance_samples
+            (device_id, sensor_id, rssi, distance, tx_power, frequency,
+             environment_type, device_type, time_of_day, day_of_week, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (device_id, sensor_id, rssi, distance,
+                  kwargs.get('tx_power'), kwargs.get('frequency'),
+                  kwargs.get('environment_type'), device_type, time_of_day, day_of_week))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save RSSI sample: {e}")
             return False
 
     def train_models(self):
@@ -1295,3 +1331,110 @@ class AIProcessor:
 
         except Exception as e:
             logger.error(f"Failed to save blueprint refinement: {str(e)}")
+
+    def detect_movement_patterns(self):
+        """Detect device movement patterns to improve position accuracy."""
+        try:
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            # Get recent device positions over time
+            cursor.execute('''
+            SELECT device_id, position_data, timestamp FROM device_positions
+            WHERE timestamp > datetime('now', '-24 hours')
+            ORDER BY device_id, timestamp
+            ''')
+            results = cursor.fetchall()
+
+            # Group by device
+            device_tracks = {}
+            for row in results:
+                device_id, position_data, timestamp = row
+                if device_id not in device_tracks:
+                    device_tracks[device_id] = []
+
+                position = json.loads(position_data)
+                device_tracks[device_id].append({
+                    'x': position.get('x', 0),
+                    'y': position.get('y', 0),
+                    'z': position.get('z', 0),
+                    'timestamp': timestamp
+                })
+
+            # Analyze movement patterns
+            patterns = {}
+            for device_id, positions in device_tracks.items():
+                if len(positions) < 5:  # Need enough data points
+                    continue
+
+                # Calculate average speed
+                speeds = []
+                for i in range(1, len(positions)):
+                    p1, p2 = positions[i-1], positions[i]
+                    distance = math.sqrt((p2['x']-p1['x'])**2 + (p2['y']-p1['y'])**2)
+                    # Parse timestamps and calculate time difference
+                    t1 = datetime.strptime(p1['timestamp'], '%Y-%m-%d %H:%M:%S')
+                    t2 = datetime.strptime(p2['timestamp'], '%Y-%m-%d %H:%M:%S')
+                    time_diff = (t2 - t1).total_seconds()
+                    if time_diff > 0:
+                        speeds.append(distance/time_diff)
+
+                # Store pattern data
+                if speeds:
+                    patterns[device_id] = {
+                        'avg_speed': sum(speeds)/len(speeds),
+                        'max_speed': max(speeds),
+                        'static': sum(speeds)/len(speeds) < 0.1  # Less than 10cm/sec = static
+                    }
+
+            return patterns
+        except Exception as e:
+            logger.error(f"Error detecting movement patterns: {e}")
+            return {}
+
+    def apply_spatial_memory(self, device_positions):
+        """Apply spatial memory to improve position estimates."""
+        try:
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            for device_id, position in device_positions.items():
+                # Get recent positions for this device
+                cursor.execute('''
+                SELECT position_data FROM device_positions
+                WHERE device_id = ? AND timestamp > datetime('now', '-60 minutes')
+                ORDER BY timestamp DESC LIMIT 10
+                ''', (device_id,))
+                recent_positions = cursor.fetchall()
+
+                if recent_positions:
+                    # Average recent positions to smooth out errors
+                    x_vals, y_vals, z_vals = [], [], []
+                    weights = []
+
+                    # Apply exponential decay weights (newer positions matter more)
+                    for i, row in enumerate(recent_positions):
+                        pos = json.loads(row[0])
+                        weight = math.exp(-0.3 * i)  # Decay factor
+
+                        x_vals.append(pos.get('x', 0) * weight)
+                        y_vals.append(pos.get('y', 0) * weight)
+                        z_vals.append(pos.get('z', 0) * weight)
+                        weights.append(weight)
+
+                    # Calculate weighted average
+                    total_weight = sum(weights)
+                    if total_weight > 0:
+                        avg_x = sum(x_vals) / total_weight
+                        avg_y = sum(y_vals) / total_weight
+                        avg_z = sum(z_vals) / total_weight
+
+                        # Blend current position with historical average (80/20)
+                        position['x'] = position['x'] * 0.8 + avg_x * 0.2
+                        position['y'] = position['y'] * 0.8 + avg_y * 0.2
+                        position['z'] = position['z'] * 0.8 + avg_z * 0.2
+
+            return device_positions
+        except Exception as e:
+            logger.error(f"Error applying spatial memory: {e}")
+            return device_positions

@@ -352,10 +352,30 @@ class BluetoothProcessor:
                 except Exception as e:
                     logger.error(f"Failed to train models: {str(e)}")
 
-            # FIRST: Save positions to database (before returning)
+            # Apply movement pattern detection to improve accuracy
+            movement_patterns = self.detect_movement_patterns()
+            for device_id, pattern in movement_patterns.items():
+                if device_id in device_positions and pattern.get('static', False):
+                    # If device is static, increase confidence in its position
+                    if 'accuracy' in device_positions[device_id]:
+                        device_positions[device_id]['accuracy'] *= 0.8  # Improve accuracy by 20%
+
+            # Apply spatial memory to smooth positions over time
+            device_positions = self.apply_spatial_memory(device_positions)
+
+            # Periodically calibrate RSSI reference values
+            # Do this occasionally, not on every run
+            if random.random() < 0.1:  # 10% chance to run calibration
+                self.ai_processor.calibrate_rssi_reference_values()
+
+            # Train ML models with advanced techniques occasionally
+            if random.random() < 0.05:  # 5% chance to run advanced training
+                self.ai_processor.train_models_with_hyperparameter_tuning()
+
+            # Save positions to database (before returning)
             self.save_device_positions_to_db(device_positions)
 
-            # SECOND: Return response data
+            # Return response data
             return {
                 "processed": len(ble_devices) + len(position_entities),
                 "devices": len(device_positions),
@@ -587,6 +607,16 @@ class BluetoothProcessor:
             })
 
         return rooms
+
+    # Add these to your BluetoothProcessor class
+
+    def detect_movement_patterns(self):
+        """Detect device movement patterns to improve position accuracy."""
+        # [Insert the detect_movement_patterns function here]
+
+    def apply_spatial_memory(self, device_positions):
+        """Apply spatial memory to improve position estimates."""
+        # [Insert the apply_spatial_memory function here]
 
 # Add this helper function to your bluetooth_processor.py file
 def safe_json_request(url, headers):
