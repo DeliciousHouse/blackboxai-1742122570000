@@ -1,10 +1,12 @@
 import json
 import logging
+import math
 import os
 import pickle
 import uuid
 from datetime import datetime
 from pathlib import Path
+from statistics import median
 from typing import Dict, List, Optional, Tuple, Union, Any
 
 import numpy as np
@@ -1543,6 +1545,7 @@ class AIProcessor:
     def apply_spatial_memory(self, device_positions):
         """Apply spatial memory to improve position estimates."""
         try:
+            from .db import get_sqlite_connection
             conn = get_sqlite_connection()
             cursor = conn.cursor()
 

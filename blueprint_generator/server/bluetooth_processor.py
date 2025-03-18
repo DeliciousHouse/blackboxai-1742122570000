@@ -5,7 +5,7 @@ import random
 import requests
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
-
+import os
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.cluster import DBSCAN
