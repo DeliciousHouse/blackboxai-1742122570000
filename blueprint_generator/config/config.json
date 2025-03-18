@@ -2,8 +2,8 @@
   "db": {
     "host": "core-mariadb",
     "port": 3306,
-    "user": "admin",
-    "password": "Xenia1031",
+    "user": "",
+    "password": "",
     "database": "homeassistant"
   },
   "processing_params": {
@@ -28,7 +28,7 @@
   },
   "api": {
     "host": "0.0.0.0",
-    "port": 5000,
+    "port": 8000,
     "debug": true,
     "cors_origins": ["*"]
   }

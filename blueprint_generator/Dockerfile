@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
 RUN adduser --system --no-create-home --shell /bin/false --group --disabled-login nginx
 
 # Upgrade pip and install requirements
+RUN pip install protobuf==3.20.0
 RUN pip install --upgrade pip wheel setuptools
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

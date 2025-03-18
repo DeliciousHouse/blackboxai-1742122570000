@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+import os
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -128,8 +129,6 @@ class HomeAssistantClient:
         # This is a placeholder for data transformation logic
         # Implement based on specific requirements
         return data
-import requests
-import json
 
 class HomeAssistantClient:
     def __init__(self, base_url, token):
