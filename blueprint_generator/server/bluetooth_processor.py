@@ -226,6 +226,8 @@ class BluetoothProcessor:
                 if device_id not in ble_device_map:
                     ble_device_map[device_id] = []
 
+                sensor_location = {'x': 0, 'y': 0, 'z': 0}  # Default value
+
                 # Try to get location from entity attributes or known mapping
                 if 'sensor_location' in device.get('attributes', {}):
                     # Use attributes if available
