@@ -212,182 +212,60 @@ class BluetoothProcessor:
 
             # Get entity area assignments for room hints using WebSocket
             registry = ha_client.get_entity_registry_websocket()
-            entity_areas = {}
-            for item in registry:
-                if 'entity_id' in item and 'area_id' in item and item['area_id']:
-                    entity_areas[item['entity_id']] = item['area_id']
 
-            # Get area positions
+            # Get areas (for room hints)
             areas = ha_client.get_areas()
-            area_positions = {}
-            grid_size = math.ceil(math.sqrt(len(areas)))
-            for i, area in enumerate(areas):
-                row = i // grid_size
-                col = i % grid_size
-                area_positions[area["area_id"]] = {
-                    'x': col * 5,
-                    'y': row * 5,
-                    'z': 0,
-                    'name': area["name"]
-                }
 
-            logger.info(f"Found {len(ble_devices)} BLE devices and {len(position_entities)} position entities in Home Assistant")
-
-            # Debug the first few entities found to verify detection
-            if ble_devices:
-                logger.info(f"Sample BLE entities: {[d.get('entity_id') for d in ble_devices[:3]]}")
-            if position_entities:
-                logger.info(f"Sample position entities: {[p.get('entity_id') for p in position_entities[:3]]}")
-
-            if not ble_devices and not position_entities:
-                logger.warning("No BLE devices or position entities found - check entity detection patterns")
-                return {"error": "No devices found", "processed": 0}
-
-            # Process the BLE device data
+            # Use position entities directly instead of calculating from RSSI
             device_positions = {}
+            for entity_id, data in position_entities.items():
+                if 'attributes' in data and 'position' in data['attributes']:
+                    position = data['attributes']['position']
 
-            # First, use any direct position entities we have (most accurate)
-            for entity in position_entities:
-                device_id = entity.get('device_id')
-                position = entity.get('position')
-                if device_id and position and all(k in position for k in ['x', 'y', 'z']):
-                    # Convert feet to meters if Home Assistant data is in feet
-                    device_positions[device_id] = {
-                        'x': convert_to_meters(position['x'], self.config),
-                        'y': convert_to_meters(position['y'], self.config),
-                        'z': convert_to_meters(position.get('z', 0), self.config),
-                        'accuracy': 3,
-                        'source': 'position_entity'
+                    # Convert units if needed (feet → meters)
+                    x = float(position.get('x', 0))
+                    y = float(position.get('y', 0))
+                    z = float(position.get('z', 0))
+
+                    if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
+                        x *= 0.3048
+                        y *= 0.3048
+                        z *= 0.3048
+
+                    device_positions[entity_id] = {
+                        'x': x,
+                        'y': y,
+                        'z': z,
+                        'accuracy': float(position.get('accuracy', 5.0)),
+                        'source': 'bermuda'
                     }
 
-            # If we have devices with known RSSI/distance but no position, estimate positions
-            ble_device_map = {}
-            for device in ble_devices:
-                device_id = device.get('mac')
-                if not device_id:
-                    continue
-
-                entity_id = device.get('entity_id')
-                sensor_location = {'x': 0, 'y': 0, 'z': 0}  # Default value
-                if device_id not in ble_device_map:
-                    ble_device_map[device_id] = []
-
-
-                # Try to get location from entity attributes or known mapping
-                if 'sensor_location' in device.get('attributes', {}):
-                    # Use attributes if available
-                    sensor_attrs = device['attributes']['sensor_location']
-                    sensor_location = {
-                        'x': convert_to_meters(sensor_attrs.get('x', 0), self.config),
-                        'y': convert_to_meters(sensor_attrs.get('y', 0), self.config),
-                        'z': convert_to_meters(sensor_attrs.get('z', 0), self.config)
-                    }
-                else:
-                    # Get dynamically generated sensor positions based on HA areas
-                    if not hasattr(self, '_sensor_positions'):
-                        self._sensor_positions = self.get_initial_sensor_positions()
-
-                    entity_id = device.get('entity_id')
-                    if entity_id in self._sensor_positions:
-                        sensor_location = self._sensor_positions[entity_id]
-                    else:
-                        # Try partial matching
-                        for sensor_id, location in self._sensor_positions.items():
-                            if sensor_id in entity_id or entity_id in sensor_id:
-                                sensor_location = location
-                                logger.debug(f"Using partial match for {entity_id}: {sensor_id}")
-                                break
-
-                # If distance is available, process it
-                if 'distance' in device and device['distance'] is not None:
-                    rssi = device.get('rssi', -80)  # Use provided RSSI or default
-                    # Store reading with device, sensor, and location info
-                    ble_device_map[device_id].append({
-                        'device_id': device_id,
-                        'entity_id': entity_id,
-                        'rssi': rssi,
-                        'sensor_id': f"sensor_{len(ble_device_map[device_id])}",
-                        'sensor_location': json.dumps(sensor_location)
-                    })
-
-            # Process readings for position estimation if needed
-            for device_id, readings in ble_device_map.items():
-                # Only process devices not already positioned
-                if device_id not in device_positions and len(readings) >= self.minimum_sensors:
-                    position = self._trilaterate(readings)
-                    if position:
-                        device_positions[device_id] = position
-                        device_positions[device_id]['source'] = 'trilateration'
-
-                        # When calculating device positions
-                        if device_id in entity_areas:
-                            # Use area assignment as a hint for positioning
-                            area_id = entity_areas[device_id]
-                            area_pos = area_positions.get(area_id)
-                            if area_pos:
-                                # Bias the position calculation towards the assigned area
-                                position['area_hint'] = area_id
-                                position['x'] += (area_pos['x'] - position['x']) * 0.3  # 30% bias towards area center
-                                position['y'] += (area_pos['y'] - position['y']) * 0.3
-
-            # When clustering devices into rooms
-            # Use area assignments to improve room boundaries
-            device_areas = {}
-            for device_id in device_positions:
-                if device_id in entity_areas:
-                    area_id = entity_areas[device_id]
-                    if area_id not in device_areas:
-                        device_areas[area_id] = []
-                    device_areas[area_id].append(device_id)
-
-            # Detect rooms based on device positions
-            rooms = self.detect_rooms(device_positions)
-            logger.info(f"Detected {len(rooms)} rooms from {len(device_positions)} device positions")
-
-            # Train AI models if we have enough data
-            if len(ble_devices) > 5:
-                try:
-                    logger.info("Training AI models with collected data")
-                    # This trains models based on data we've seen
-                    self.ai_processor.train_models()
-                except Exception as e:
-                    logger.error(f"Failed to train models: {str(e)}")
-
-            # Apply movement pattern detection to improve accuracy
+            # Apply movement pattern detection
             movement_patterns = self.ai_processor.detect_movement_patterns()
             for device_id, pattern in movement_patterns.items():
                 if device_id in device_positions and pattern.get('static', False):
-                    # If device is static, increase confidence in its position
                     if 'accuracy' in device_positions[device_id]:
-                        device_positions[device_id]['accuracy'] *= 0.8  # Improve accuracy by 20%
+                        device_positions[device_id]['accuracy'] *= 0.8
 
-            # Apply spatial memory to smooth positions over time
+            # Apply spatial memory
             device_positions = self.ai_processor.apply_spatial_memory(device_positions)
 
-            # Periodically calibrate RSSI reference values
-            # Do this occasionally, not on every run
-            if random.random() < 0.1:  # 10% chance to run calibration
-                self.ai_processor.calibrate_rssi_reference_values()
+            # Room detection
+            rooms = self.detect_rooms(device_positions)
 
-            # Train ML models with advanced techniques occasionally
-            if random.random() < 0.05:  # 5% chance to run advanced training
-                self.ai_processor.train_models_with_hyperparameter_tuning()
-
-            # Save positions to database (before returning)
+            # Save positions to database
             self.save_device_positions_to_db(device_positions)
 
-            # Return response data
             return {
-                "processed": len(ble_devices) + len(position_entities),
+                "processed": len(position_entities),
                 "devices": len(device_positions),
                 "rooms": len(rooms),
                 "device_positions": device_positions,
                 "rooms": rooms
             }
-
         except Exception as e:
-            logger.error(f"Error processing Bluetooth sensors: {str(e)}", exc_info=True)
-            return {"error": str(e), "processed": 0}
+            logger.error(f"Error processing Bluetooth sensors: {e}")
+            return {"error": str(e)}
 
     def estimate_positions(self, time_window: int = 300) -> Dict[str, Dict[str, float]]:
         """Estimate positions of all devices in the time window."""
