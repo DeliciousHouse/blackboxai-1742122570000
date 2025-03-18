@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Dict, Optional
 
-from flask import Flask, jsonify, request, send_from_directory, render_template
+from flask import Flask, jsonify, requests, send_from_directory, render_template
 from flask_cors import CORS
 import os
 
@@ -12,6 +12,73 @@ from .db import test_connection, execute_query
 from .schema_discovery import SchemaDiscovery
 from .ha_client import HomeAssistantClient
 import uuid
+
+@app.route('/api/debug/entities', methods=['GET'])
+def debug_entities():
+    """Debug endpoint for entity detection."""
+    try:
+        ha_client = HomeAssistantClient()
+        result = {
+            "connection": {
+                "url": ha_client.base_url,
+                "token_provided": bool(ha_client.token),
+                "headers": list(ha_client.headers.keys())
+            },
+            "entities": {
+                "all": [],
+                "ble": [],
+                "distance": [],
+                "position": []
+            },
+            "test_queries": {}
+        }
+
+        # Test direct API call
+        try:
+            test_url = f"{ha_client.base_url}/api/states"
+            response = requests.get(test_url, headers=ha_client.headers)
+            result["connection"]["test_status"] = response.status_code
+
+            # Get all entities
+            all_states = response.json()
+            result["entities"]["total_count"] = len(all_states)
+
+            # Sample first 10 entities
+            result["entities"]["all"] = [e["entity_id"] for e in all_states[:10]]
+
+            # Find entities matching your example patterns
+            example_patterns = [
+                "apple_watch", "iphone", "ble_distance", "mmwave", "bermuda"
+            ]
+
+            for pattern in example_patterns:
+                matches = []
+                for state in all_states:
+                    if pattern in state["entity_id"].lower():
+                        matches.append(state["entity_id"])
+                result["test_queries"][pattern] = matches[:5]  # Just show first 5
+
+            # Find BLE entities
+            for state in all_states:
+                entity_id = state["entity_id"].lower()
+
+                if "_ble" in entity_id or entity_id.endswith("_ble"):
+                    result["entities"]["ble"].append(state["entity_id"])
+
+                if "distance" in entity_id:
+                    result["entities"]["distance"].append(state["entity_id"])
+
+                if any(p in entity_id for p in ["position", "bermuda", "tracker", "mmwave"]):
+                    result["entities"]["position"].append(state["entity_id"])
+
+        except Exception as e:
+            result["connection"]["error"] = str(e)
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Debug endpoint failed: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Initialize Flask app
 app = Flask(__name__)
