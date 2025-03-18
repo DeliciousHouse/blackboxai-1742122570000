@@ -5,6 +5,8 @@ import logging.config
 import os
 from pathlib import Path
 from server.db import init_sqlite_db
+import threading
+import time
 
 # Set up logging first
 logging.config.fileConfig('config/logging.conf')
@@ -55,6 +57,46 @@ def init_database():
         logger.error(f"Database initialization failed: {str(e)}")
         return False
 
+def start_processing_scheduler():
+    """Start a background thread that periodically processes Bluetooth data."""
+    from server.bluetooth_processor import BluetoothProcessor
+    from server.blueprint_generator import BlueprintGenerator
+
+    bluetooth_processor = BluetoothProcessor()
+    blueprint_generator = BlueprintGenerator()
+
+    def process_loop():
+        while True:
+            try:
+                logger.info("Running scheduled Bluetooth data processing")
+                result = bluetooth_processor.process_bluetooth_sensors()
+
+                # Log the results
+                logger.info(f"Processed {result.get('processed', 0)} entities, "
+                           f"found {result.get('devices', 0)} device positions, "
+                           f"detected {len(result.get('rooms', []))} rooms")
+
+                # Generate blueprint if we have enough data
+                if result.get('device_positions'):
+                    logger.info("Generating blueprint from processed data")
+                    blueprint = blueprint_generator.generate_blueprint(
+                        device_positions=result.get('device_positions', {}),
+                        rooms=result.get('rooms', [])
+                    )
+                    logger.info(f"Blueprint generated with {len(blueprint.get('rooms', []))} rooms")
+
+            except Exception as e:
+                logger.error(f"Error in processing loop: {str(e)}")
+
+            # Sleep for 5 minutes before next processing
+            time.sleep(300)
+
+    # Start the processing thread
+    processing_thread = threading.Thread(target=process_loop, daemon=True)
+    processing_thread.start()
+    logger.info("Background processing scheduler started")
+
+
 def main():
     """Main entry point."""
     try:
@@ -67,6 +109,9 @@ def main():
             logger.error("Failed to initialize application")
             return
 
+        start_processing_scheduler()
+        logger.info("Background processing started")
+        
         # Start API server
         host = config.get('api', {}).get('host', '0.0.0.0')
         port = config.get('api', {}).get('port', 5000)
