@@ -61,6 +61,37 @@ class HomeAssistantClient:
         # Return empty string if no token found (will fail authentication)
         return ""
 
+    def find_entities_by_pattern(self, patterns: List[str], domains: List[str] = None) -> List[Dict]:
+        """Find entities matching any of the patterns in their entity_id or attributes."""
+        try:
+            url = f"{self.base_url}/api/states"
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+
+            all_states = response.json()
+            matching_entities = []
+
+            for state in all_states:
+                entity_id = state.get('entity_id', '')
+
+                # Check domain filter if provided
+                if domains and not any(entity_id.startswith(f"{domain}.") for domain in domains):
+                    continue
+
+                # Check for pattern matches
+                if any(pattern.lower() in entity_id.lower() for pattern in patterns):
+                    matching_entities.append({
+                        'entity_id': entity_id,
+                        'state': state.get('state'),
+                        'attributes': state.get('attributes', {})
+                    })
+
+            return matching_entities
+
+        except Exception as e:
+            logger.error(f"Failed to find entities by pattern: {str(e)}")
+            return []
+
     def get_bluetooth_devices(self) -> List[Dict]:
         """Get all bluetooth devices from Home Assistant."""
         try:
@@ -86,46 +117,8 @@ class HomeAssistantClient:
             logger.error(f"Failed to get bluetooth devices from Home Assistant: {str(e)}")
             return []
 
-    def get_bermuda_positions(self) -> List[Dict]:
-        """Get device positions from Bermuda Trilateration."""
-        try:
-            # First, find all bermuda trilateration entities
-            url = f"{self.base_url}/api/states"
-            response = requests.get(url, headers=self.headers)
-            response.raise_for_status()
-
-            all_states = response.json()
-            positions = []
-
-            for state in all_states:
-                entity_id = state.get('entity_id', '')
-                # Check for bermuda position entities
-                if entity_id.startswith('sensor.bermuda_'):
-                    attributes = state.get('attributes', {})
-                    if 'position' in attributes:
-                        device_id = entity_id.replace('sensor.bermuda_', '')
-                        position_data = attributes.get('position', {})
-
-                        # Extract position data
-                        position = {
-                            'x': float(position_data.get('x', 0)),
-                            'y': float(position_data.get('y', 0)),
-                            'z': float(position_data.get('z', 0))
-                        }
-
-                        positions.append({
-                            'device_id': device_id,
-                            'position': position
-                        })
-
-            return positions
-
-        except Exception as e:
-            logger.error(f"Failed to get Bermuda positions from Home Assistant: {str(e)}")
-            return []
-
     def get_private_ble_devices(self) -> List[Dict]:
-        """Get devices from ESP32 BLE Monitor."""
+        """Get all BLE devices with distance or RSSI data."""
         try:
             url = f"{self.base_url}/api/states"
             response = requests.get(url, headers=self.headers)
@@ -136,36 +129,91 @@ class HomeAssistantClient:
 
             for state in all_states:
                 entity_id = state.get('entity_id', '')
-                if entity_id.startswith('sensor.') and 'ble_monitor' in entity_id and 'rssi' in entity_id:
-                    # Extract the MAC address from entity ID or attributes
-                    attributes = state.get('attributes', {})
-                    mac = attributes.get('mac', '')
+                attributes = state.get('attributes', {})
 
-                    # If mac isn't in attributes, try to extract from entity_id
-                    if not mac:
-                        parts = entity_id.split('_')
-                        if len(parts) >= 3:
-                            mac_parts = parts[2:-1]  # Skip 'sensor', 'ble_monitor', and 'rssi'
-                            mac = '_'.join(mac_parts)
+                # Much more flexible matching for BLE entities
+                if (entity_id.startswith('sensor.') and
+                    ('_ble' in entity_id.lower() or entity_id.lower().endswith('_ble')) and
+                    ('distance' in entity_id.lower() or 'rssi' in entity_id.lower())):
 
-                    if mac:
-                        rssi = state.get('state')
+                    # Try to extract device identifier
+                    parts = entity_id.split('_')
+                    if len(parts) >= 2:
+                        # Use the first part as device type (phone, watch, etc)
+                        device_type = parts[1]
+
+                        # Use the device name or friendly name
+                        device_name = attributes.get('friendly_name', entity_id)
+
+                        # Get distance/RSSI value
+                        value = state.get('state')
                         try:
-                            rssi = int(rssi)
+                            value = float(value)
                         except (ValueError, TypeError):
-                            rssi = -100  # Default value if conversion fails
+                            value = -100  # Default if conversion fails
 
                         devices.append({
-                            'mac': mac,
-                            'rssi': rssi,
+                            'mac': device_type,  # Use device type as identifier
+                            'rssi': value if 'rssi' in entity_id.lower() else -59 + (value * -2),  # Convert distance to RSSI if needed
                             'entity_id': entity_id,
-                            'friendly_name': attributes.get('friendly_name', '')
+                            'friendly_name': device_name,
+                            'distance': value if 'distance' in entity_id.lower() else None
                         })
 
             return devices
 
         except Exception as e:
-            logger.error(f"Failed to get ESP32 BLE Monitor devices from Home Assistant: {str(e)}")
+            logger.error(f"Failed to get BLE devices from Home Assistant: {str(e)}")
+            return []
+
+    def get_bermuda_positions(self) -> List[Dict]:
+        """Get device positions from Bermuda Trilateration."""
+        try:
+            url = f"{self.base_url}/api/states"
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+
+            all_states = response.json()
+            positions = []
+
+            for state in all_states:
+                entity_id = state.get('entity_id', '')
+                attributes = state.get('attributes', {})
+
+                # More flexible matching for Bermuda entities
+                if ('bermuda' in entity_id.lower() or
+                    'position' in attributes or
+                    ('x' in attributes and 'y' in attributes)):
+
+                    # Extract position data from attributes
+                    position_data = attributes.get('position', {})
+                    if not position_data and 'x' in attributes and 'y' in attributes:
+                        # If position is not nested, get from top level attributes
+                        position_data = {
+                            'x': attributes.get('x', 0),
+                            'y': attributes.get('y', 0),
+                            'z': attributes.get('z', 0)
+                        }
+
+                    # Extract device ID from entity
+                    device_id = entity_id.replace('device_tracker.', '').replace('sensor.', '')
+
+                    # Create position object
+                    position = {
+                        'x': float(position_data.get('x', 0)),
+                        'y': float(position_data.get('y', 0)),
+                        'z': float(position_data.get('z', 0))
+                    }
+
+                    positions.append({
+                        'device_id': device_id,
+                        'position': position
+                    })
+
+            return positions
+
+        except Exception as e:
+            logger.error(f"Failed to get position data from Home Assistant: {str(e)}")
             return []
 
     def process_bluetooth_data(self, data: Dict) -> Dict:

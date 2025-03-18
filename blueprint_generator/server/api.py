@@ -105,6 +105,34 @@ def health_check():
             'error': str(e)
         }), 503
 
+@app.route('/api/scan', methods=['GET'])
+def scan_entities():
+    """Scan for relevant entities and report availability."""
+    try:
+        ha_client = HomeAssistantClient()
+
+        # Scan for different types of useful entities
+        ble_entities = ha_client.find_entities_by_pattern(['ble', 'bluetooth'], ['sensor'])
+        position_entities = ha_client.find_entities_by_pattern(['position', 'bermuda', 'tracker', 'mmwave'],
+                                                              ['sensor', 'device_tracker'])
+        distance_entities = ha_client.find_entities_by_pattern(['distance'], ['sensor'])
+
+        # Organize by category
+        entity_data = {
+            'ble_entities': [e['entity_id'] for e in ble_entities],
+            'position_entities': [e['entity_id'] for e in position_entities],
+            'distance_entities': [e['entity_id'] for e in distance_entities]
+        }
+
+        return jsonify({
+            'status': 'success',
+            'entities_found': len(ble_entities) + len(position_entities) + len(distance_entities),
+            'entities': entity_data
+        })
+    except Exception as e:
+        logger.error(f"Failed to scan entities: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/devices', methods=['GET'])
 def get_devices():
     """Get list of tracked devices."""
