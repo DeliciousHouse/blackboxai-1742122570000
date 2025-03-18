@@ -1,5 +1,5 @@
 name: "3D Blueprint Generator"
-version: "1.05"
+version: "1.06"
 slug: "blueprint_generator"
 description: "Generate 3D home blueprints from Bluetooth sensor data"
 url: "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator"
@@ -35,14 +35,14 @@ schema:
 
 # Add-on ports
 ports:
-  8000/tcp: 8000
+  8000/tcp: null
 
 # Add-on ports description
 ports_description:
   8000/tcp: Web interface
 
 # Host requirements
-host_network: true
+host_network: false
 hassio_api: true
 auth_api: true
 
