@@ -70,6 +70,46 @@ def get_sqlite_connection():
         logger.error(f"Failed to connect to SQLite: {str(e)}")
         raise
 
+def init_database():
+    """Initialize the database with required tables."""
+    try:
+        conn = get_sqlite_connection()
+        cursor = conn.cursor()
+
+        # Create device positions table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS device_positions (
+            id INTEGER PRIMARY KEY,
+            device_id TEXT,
+            position_data TEXT,
+            source TEXT,
+            accuracy REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+
+        # Create RSSI distance samples table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS rssi_distance_samples (
+            id INTEGER PRIMARY KEY,
+            device_id TEXT,
+            sensor_id TEXT,
+            rssi INTEGER,
+            distance REAL,
+            tx_power INTEGER,
+            frequency REAL,
+            environment_type TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize database tables: {str(e)}")
+        return False
+
 def init_sqlite_db():
     """Initialize SQLite database schema."""
     try:
@@ -109,6 +149,10 @@ def init_sqlite_db():
 
         conn.commit()
         conn.close()
+
+        # Initialize additional tables from init_database function
+        init_database()
+
         return True
     except Exception as e:
         logger.error(f"Failed to initialize SQLite schema: {str(e)}")

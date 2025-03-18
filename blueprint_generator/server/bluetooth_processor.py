@@ -256,6 +256,10 @@ class BluetoothProcessor:
                 except Exception as e:
                     logger.error(f"Failed to train models: {str(e)}")
 
+            # FIRST: Save positions to database (before returning)
+            self.save_device_positions_to_db(device_positions)
+
+            # SECOND: Return response data
             return {
                 "processed": len(ble_devices) + len(position_entities),
                 "devices": len(device_positions),
@@ -291,6 +295,32 @@ class BluetoothProcessor:
                     positions[device_id] = position
 
         return positions
+
+    def save_device_positions_to_db(self, device_positions):
+        """Save device positions to database for blueprint generation."""
+        try:
+            from .db import get_sqlite_connection
+            conn = get_sqlite_connection()
+            cursor = conn.cursor()
+
+            # Add positions to database
+            for device_id, position in device_positions.items():
+                position_json = json.dumps(position)
+
+                # Insert new position
+                cursor.execute('''
+                INSERT INTO device_positions
+                (device_id, position_data, source, accuracy, timestamp)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ''', (device_id, position_json, 'bluetooth', position.get('accuracy', 0)))
+
+            conn.commit()
+            conn.close()
+            logger.info(f"Saved {len(device_positions)} device positions to database")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving device positions: {e}")
+            return False
 
     def _rssi_to_distance(self, rssi: int, sensor_id: Optional[str] = None) -> float:
         """Convert RSSI to distance using ML model or path loss model."""

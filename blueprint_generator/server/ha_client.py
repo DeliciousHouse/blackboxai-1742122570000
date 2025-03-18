@@ -20,30 +20,47 @@ def get_area_registry(base_url, token):
 
     def on_message(ws, message):
         nonlocal areas
-        data = json.loads(message)
-        logger.debug(f"WebSocket message: {data.get('type')}")
+        try:
+            data = json.loads(message)
+            logger.debug(f"WebSocket message: {data.get('type')}")
 
-        if data.get('type') == 'auth_required':
-            # Send authentication
-            ws.send(json.dumps({
-                "type": "auth",
-                "access_token": token
-            }))
+            if data.get('type') == 'auth_required':
+                # Send authentication
+                ws.send(json.dumps({
+                    "type": "auth",
+                    "access_token": token
+                }))
 
-        elif data.get('type') == 'auth_ok':
-            # Now authenticated, request area registry
-            ws.send(json.dumps({
-                "id": message_id,
-                "type": "config/area_registry/list"
-            }))
+            elif data.get('type') == 'auth_ok':
+                # Now authenticated, request area registry
+                ws.send(json.dumps({
+                    "id": message_id,
+                    "type": "config/area_registry/list"
+                }))
 
-        elif data.get('type') == 'result' and data.get('success'):
-            # Got area registry results
-            if 'result' in data and isinstance(data['result'], list):
-                areas = data['result']
-                logger.info(f"Received {len(areas)} areas via WebSocket")
-                response_received.set()
-                ws.close()
+            elif data.get('type') == 'result' and data.get('success'):
+                # Got area registry results
+                if 'result' in data and isinstance(data['result'], list):
+                    areas = data['result']
+                    logger.info(f"Received {len(areas)} areas via WebSocket")
+                    response_received.set()
+                    ws.close()
+        except json.JSONDecodeError as e:
+            # The message probably contains binary data or is malformed
+            logger.warning(f"WebSocket message not valid JSON: {str(e)}")
+            # Try to extract JSON part if there's garbage around it
+            try:
+                # Find JSON object start and end
+                start = message.find('{')
+                end = message.rfind('}') + 1
+                if start >= 0 and end > start:
+                    clean_message = message[start:end]
+                    data = json.loads(clean_message)
+                    logger.info("Successfully cleaned and parsed WebSocket message")
+                    # Process normally...
+
+            except Exception:
+                logger.error("Failed to parse WebSocket message after cleanup")
 
     def on_error(ws, error):
         logger.error(f"WebSocket error: {error}")
