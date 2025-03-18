@@ -47,8 +47,7 @@ class AIProcessor:
         self.wall_prediction_model = None
         self.blueprint_refinement_model = None
 
-        # Create database tables
-        self._create_tables()  # Add this line
+        self._create_tables()
         # Load models if they exist
         self._load_models()
 

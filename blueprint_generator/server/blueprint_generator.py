@@ -26,7 +26,7 @@ class BlueprintGenerator:
         self.latest_job_id = None
 
         # Initialize AI database tables if needed
-        self.ai_processor.setup_database_tables()
+        self.ai_processor._create_tables()
 
     def _load_config(self, config_path: Optional[str] = None) -> Dict:
         """Load configuration from file or use defaults."""
