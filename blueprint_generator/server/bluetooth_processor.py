@@ -55,14 +55,42 @@ class BluetoothProcessor:
         ha_client = HomeAssistantClient()
 
         try:
-            # Get all areas (rooms) from Home Assistant
-            areas_response = requests.get(f"{ha_client.base_url}/api/areas", headers=ha_client.headers)
-            if areas_response.status_code != 200:
-                logger.error("Failed to get areas from Home Assistant")
-                return {}
+            # Try template endpoint to get areas
+            template_data = {
+                "template": "{% set result = namespace(areas=[]) %}{% for area in areas() %}{% set area_data = {'area_id': area.id, 'name': area.name} %}{% set result.areas = result.areas + [area_data] %}{% endfor %}{{ result.areas | to_json }}"
+            }
 
-            areas = areas_response.json()
-            logger.info(f"Found {len(areas)} areas in Home Assistant")
+            logger.info("Attempting to get areas using template API")
+            response = requests.post(
+                f"{ha_client.base_url}/api/template",
+                headers=ha_client.headers,
+                json=template_data
+            )
+
+            if response.status_code == 200:
+                try:
+                    areas = json.loads(response.text)
+                    logger.info(f"Found {len(areas)} areas using template API")
+
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON from template API: {response.text[:100]}")
+                    areas = None
+            else:
+                logger.warning(f"Template API returned status {response.status_code}")
+                areas = None
+
+            # If template method failed, use fallback
+            if not areas:
+                logger.warning("Using fallback grid for sensor positions")
+                # Create basic room layout
+                areas = [
+                    {"area_id": "living_room", "name": "Living Room"},
+                    {"area_id": "kitchen", "name": "Kitchen"},
+                    {"area_id": "bedroom", "name": "Bedroom"},
+                    {"area_id": "bathroom", "name": "Bathroom"},
+                    {"area_id": "office", "name": "Office"},
+                    {"area_id": "hallway", "name": "Hallway"}
+                ]
 
             # Create a simple grid layout (approximate layout)
             grid_size = math.ceil(math.sqrt(len(areas)))
