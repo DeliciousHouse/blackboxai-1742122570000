@@ -71,18 +71,18 @@ def start_processing_scheduler():
                 logger.info("Running scheduled Bluetooth data processing")
                 result = bluetooth_processor.process_bluetooth_sensors()
 
-                # Log the results
+                # Log the results - FIXED
                 logger.info(f"Processed {result.get('processed', 0)} entities, "
-                           f"found {result.get('devices', 0)} device positions, "
-                           f"detected {len(result.get('rooms', []))} rooms")
+                           f"found {len(result.get('device_positions', {}))} device positions, "
+                           f"detected {len(result.get('room_list', []))} rooms")
 
                 # Generate blueprint if we have enough data
                 if result:
                     logger.info("Generating blueprint from processed data")
-                    blueprint = blueprint_generator.generate_blueprint()
-                    #     positions=result.get('positions', {}),
-                    #     rooms=result.get('rooms', [])
-                    # )
+                    blueprint = blueprint_generator.generate_blueprint(
+                        positions=result.get('device_positions', {}),  # Changed from 'positions'
+                        rooms=result.get('room_list', [])  # Changed from 'rooms'
+                    )
                     logger.info(f"Blueprint generated with {len(blueprint.get('rooms', []))} rooms")
 
             except Exception as e:
