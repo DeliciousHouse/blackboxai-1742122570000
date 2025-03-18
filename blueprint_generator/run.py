@@ -77,12 +77,12 @@ def start_processing_scheduler():
                            f"detected {len(result.get('rooms', []))} rooms")
 
                 # Generate blueprint if we have enough data
-                if result.get('device_positions'):
+                if result:
                     logger.info("Generating blueprint from processed data")
-                    blueprint = blueprint_generator.generate_blueprint(
-                        device_positions=result.get('device_positions', {}),
-                        rooms=result.get('rooms', [])
-                    )
+                    blueprint = blueprint_generator.generate_blueprint()
+                    #     positions=result.get('positions', {}),
+                    #     rooms=result.get('rooms', [])
+                    # )
                     logger.info(f"Blueprint generated with {len(blueprint.get('rooms', []))} rooms")
 
             except Exception as e:
