@@ -14,12 +14,66 @@ from .ai_processor import AIProcessor
 
 logger = logging.getLogger(__name__)
 
+def load_global_config(config_path=None):
+    """Load global configuration from file or use defaults."""
+    if hasattr(load_global_config, 'cached_config'):
+        return load_global_config.cached_config
+
+    if config_path and os.path.exists(config_path):
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+    else:
+        config = {
+            'processing_params': {
+                'distance_calculation': {
+                    'reference_power': -59,
+                    'path_loss_exponent': 3.0
+                },
+                'rssi_threshold': -85,
+                'minimum_sensors': 3,
+                'accuracy_threshold': 15.0,  # Increased from 7.0
+                'use_ml_distance': True,
+                'ml_fallback_threshold': 3.0
+            },
+            'blueprint_validation': {
+                'min_room_area': 4,
+                'max_room_area': 100,
+                'min_room_dimension': 1.5,
+                'max_room_dimension': 15,
+                'min_wall_thickness': 0.1,
+                'max_wall_thickness': 0.5,
+                'min_ceiling_height': 2.2,
+                'max_ceiling_height': 4.0
+            },
+            'ai_settings': {
+                'use_ml_wall_prediction': True,
+                'use_ml_blueprint_refinement': True,
+                'training_data_collection': True
+            },
+            'unit_conversion': {
+                'home_assistant_uses_feet': True  # Set to True if HA uses feet
+            }
+        }
+
+    # Cache the config so we don't reload it every time
+    load_global_config.cached_config = config
+    return config
+
+def convert_to_meters(value, config=None):
+    """Convert a value to meters based on config settings."""
+    if config is None:
+        config = load_global_config()
+
+    if config.get('unit_conversion', {}).get('home_assistant_uses_feet', True):
+        return float(value) * 0.3048  # Convert feet to meters
+    return float(value)  # Already in meters
+
 class BluetoothProcessor:
     """Process Bluetooth signals for position estimation."""
 
     def __init__(self, config_path: Optional[str] = None):
         """Initialize the Bluetooth processor."""
-        self.config = self._load_config(config_path)
+        self.config = load_global_config(config_path)
         self.reference_power = self.config['processing_params']['distance_calculation']['reference_power']
         self.path_loss_exponent = self.config['processing_params']['distance_calculation']['path_loss_exponent']
         self.rssi_threshold = self.config['processing_params']['rssi_threshold']
@@ -39,13 +93,13 @@ class BluetoothProcessor:
             'processing_params': {
                 'distance_calculation': {
                     'reference_power': -59,
-                    'path_loss_exponent': 2.0
+                    'path_loss_exponent': 3.0
                 },
-                'rssi_threshold': -75,
+                'rssi_threshold': -85,
                 'minimum_sensors': 3,
-                'accuracy_threshold': 1.0,
+                'accuracy_threshold': 15.0,
                 'use_ml_distance': True,
-                'ml_fallback_threshold': 0.5  # Confidence threshold for ML model
+                'ml_fallback_threshold': 3.0  # Confidence threshold for ML model
             }
         }
 
@@ -155,6 +209,27 @@ class BluetoothProcessor:
             ble_devices = ha_client.get_private_ble_devices()
             position_entities = ha_client.get_bermuda_positions()
 
+            # Get entity area assignments for room hints
+            registry = requests.get(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers).json()
+            entity_areas = {}
+            for item in registry:
+                if 'entity_id' in item and 'area_id' in item and item['area_id']:
+                    entity_areas[item['entity_id']] = item['area_id']
+
+            # Get area positions
+            areas = ha_client.get_areas()
+            area_positions = {}
+            grid_size = math.ceil(math.sqrt(len(areas)))
+            for i, area in enumerate(areas):
+                row = i // grid_size
+                col = i % grid_size
+                area_positions[area["area_id"]] = {
+                    'x': col * 5,
+                    'y': row * 5,
+                    'z': 0,
+                    'name': area["name"]
+                }
+
             logger.info(f"Found {len(ble_devices)} BLE devices and {len(position_entities)} position entities in Home Assistant")
 
             # Debug the first few entities found to verify detection
@@ -175,14 +250,14 @@ class BluetoothProcessor:
                 device_id = entity.get('device_id')
                 position = entity.get('position')
                 if device_id and position and all(k in position for k in ['x', 'y', 'z']):
+                    # Convert feet to meters if Home Assistant data is in feet
                     device_positions[device_id] = {
-                        'x': float(position['x']),
-                        'y': float(position['y']),
-                        'z': float(position.get('z', 0)),
-                        'accuracy': 0.5,  # Assume fairly accurate
+                        'x': convert_to_meters(position['x'], self.config),
+                        'y': convert_to_meters(position['y'], self.config),
+                        'z': convert_to_meters(position.get('z', 0), self.config),
+                        'accuracy': 3,
                         'source': 'position_entity'
                     }
-                    logger.debug(f"Using direct position for {device_id}: {position}")
 
             # If we have devices with known RSSI/distance but no position, estimate positions
             ble_device_map = {}
@@ -202,9 +277,9 @@ class BluetoothProcessor:
                     # Use attributes if available
                     sensor_attrs = device['attributes']['sensor_location']
                     sensor_location = {
-                        'x': float(sensor_attrs.get('x', 0)),
-                        'y': float(sensor_attrs.get('y', 0)),
-                        'z': float(sensor_attrs.get('z', 0))
+                        'x': convert_to_meters(sensor_attrs.get('x', 0), self.config),
+                        'y': convert_to_meters(sensor_attrs.get('y', 0), self.config),
+                        'z': convert_to_meters(sensor_attrs.get('z', 0), self.config)
                     }
                 else:
                     # Get dynamically generated sensor positions based on HA areas
@@ -242,6 +317,27 @@ class BluetoothProcessor:
                     if position:
                         device_positions[device_id] = position
                         device_positions[device_id]['source'] = 'trilateration'
+
+                        # When calculating device positions
+                        if device_id in entity_areas:
+                            # Use area assignment as a hint for positioning
+                            area_id = entity_areas[device_id]
+                            area_pos = area_positions.get(area_id)
+                            if area_pos:
+                                # Bias the position calculation towards the assigned area
+                                position['area_hint'] = area_id
+                                position['x'] += (area_pos['x'] - position['x']) * 0.3  # 30% bias towards area center
+                                position['y'] += (area_pos['y'] - position['y']) * 0.3
+
+            # When clustering devices into rooms
+            # Use area assignments to improve room boundaries
+            device_areas = {}
+            for device_id in device_positions:
+                if device_id in entity_areas:
+                    area_id = entity_areas[device_id]
+                    if area_id not in device_areas:
+                        device_areas[area_id] = []
+                    device_areas[area_id].append(device_id)
 
             # Detect rooms based on device positions
             rooms = self.detect_rooms(device_positions)

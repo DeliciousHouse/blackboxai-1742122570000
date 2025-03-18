@@ -21,6 +21,10 @@ def get_area_registry(base_url, token):
     def on_message(ws, message):
         nonlocal areas
         try:
+            # Clean up any potential non-JSON content
+            if message.startswith('\n'):
+                message = message.strip()
+
             data = json.loads(message)
             logger.debug(f"WebSocket message: {data.get('type')}")
 
@@ -46,21 +50,10 @@ def get_area_registry(base_url, token):
                     response_received.set()
                     ws.close()
         except json.JSONDecodeError as e:
-            # The message probably contains binary data or is malformed
-            logger.warning(f"WebSocket message not valid JSON: {str(e)}")
-            # Try to extract JSON part if there's garbage around it
-            try:
-                # Find JSON object start and end
-                start = message.find('{')
-                end = message.rfind('}') + 1
-                if start >= 0 and end > start:
-                    clean_message = message[start:end]
-                    data = json.loads(clean_message)
-                    logger.info("Successfully cleaned and parsed WebSocket message")
-                    # Process normally...
-
-            except Exception:
-                logger.error("Failed to parse WebSocket message after cleanup")
+            logger.error(f"WebSocket message not valid JSON: {e}")
+            logger.debug(f"Message content (first 100 chars): {message[:100]}")
+        except Exception as e:
+            logger.error(f"Error processing WebSocket message: {e}")
 
     def on_error(ws, error):
         logger.error(f"WebSocket error: {error}")
