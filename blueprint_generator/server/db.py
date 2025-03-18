@@ -11,17 +11,25 @@ logger = logging.getLogger(__name__)
 config = load_config()
 
 def get_db_connection():
-    """Create a database connection."""
-    return pymysql.connect(
-        host=config['db']['host'],
-        port=config['db']['port'],
-        user=config['db']['user'],
-        password=config['db']['password'],
-        database=config['db']['database'],
-        cursorclass=DictCursor,
-        ssl_disabled=True
+    """Get database connection with read-only permissions."""
+    # Get credentials from environment or options
+    config = {
+        'host': os.environ.get('DB_HOST', 'core-mariadb'),
+        'port': int(os.environ.get('DB_PORT', 3306)),
+        'user': os.environ.get('DB_USER', 'homeassistant'),
+        'password': os.environ.get('DB_PASSWORD', ''),
+        'database': os.environ.get('DB_NAME', 'homeassistant')
+    }
 
-    )
+    # Connect with read-only mode if not creating tables
+    connection = mysql.connector.connect(**config)
+
+    # Execute SET SESSION TRANSACTION READ ONLY for read operations
+    cursor = connection.cursor()
+    cursor.execute("SET SESSION TRANSACTION READ ONLY")
+    cursor.close()
+
+    return connection
 
 def test_connection() -> bool:
     """Test the database connection."""

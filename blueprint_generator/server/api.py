@@ -21,7 +21,7 @@ CORS(app)
 blueprint_generator = BlueprintGenerator()
 bluetooth_processor = BluetoothProcessor()
 schema_discovery = SchemaDiscovery()
-ha_client = HomeAssistantClient(base_url='http://192.168.86.91', token='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI0Y2Y1YThjNTJhZTE0NDg4OTdmOTkxNDUzOGJlMWFmMSIsImlhdCI6MTczOTgxNzU0OSwiZXhwIjoyMDU1MTc3NTQ5fQ.aIegiySk4HPCpS6jfYe9IBindUnt3u1Es2XXkkRyuV4')
+ha_client = HomeAssistantClient()
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -111,26 +111,29 @@ def scan_entities():
     try:
         ha_client = HomeAssistantClient()
 
-        # Scan for different types of useful entities
-        ble_entities = ha_client.find_entities_by_pattern(['ble', 'bluetooth'], ['sensor'])
-        position_entities = ha_client.find_entities_by_pattern(['position', 'bermuda', 'tracker', 'mmwave'],
-                                                              ['sensor', 'device_tracker'])
-        distance_entities = ha_client.find_entities_by_pattern(['distance'], ['sensor'])
+        # Very liberal scan - any entities that might be related
+        all_entities = ha_client.find_entities_by_pattern([""], [])  # Get ALL entities
+        ble_entities = [e for e in all_entities if 'ble' in e['entity_id'].lower()]
+        distance_entities = [e for e in all_entities if 'distance' in e['entity_id'].lower()]
+        position_entities = [e for e in all_entities if any(p in e['entity_id'].lower()
+                                                       for p in ['position', 'bermuda', 'tracker', 'mmwave'])]
 
         # Organize by category
         entity_data = {
             'ble_entities': [e['entity_id'] for e in ble_entities],
             'position_entities': [e['entity_id'] for e in position_entities],
-            'distance_entities': [e['entity_id'] for e in distance_entities]
+            'distance_entities': [e['entity_id'] for e in distance_entities],
+            'sample_entities': [e['entity_id'] for e in all_entities[:10]]  # First 10 entities
         }
 
         return jsonify({
             'status': 'success',
             'entities_found': len(ble_entities) + len(position_entities) + len(distance_entities),
+            'total_entities': len(all_entities),
             'entities': entity_data
         })
     except Exception as e:
-        logger.error(f"Failed to scan entities: {str(e)}")
+        logger.error(f"Failed to scan entities: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/devices', methods=['GET'])
@@ -406,6 +409,59 @@ def train_blueprint_refinement_model():
     except Exception as e:
         logger.error(f"Blueprint refinement model training failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/debug', methods=['GET'])
+def debug_ha_connection():
+    """Test Home Assistant API connection and entity detection."""
+    try:
+        ha_client = HomeAssistantClient()
+
+        # Basic API test
+        url = f"{ha_client.base_url}/api/config"
+        try:
+            response = requests.get(url, headers=ha_client.headers)
+            ha_status = {
+                "connected": response.status_code == 200,
+                "status_code": response.status_code,
+                "base_url": ha_client.base_url,
+                "token_provided": bool(ha_client.token),
+                "headers": list(ha_client.headers.keys())
+            }
+        except Exception as e:
+            ha_status = {"error": str(e), "connected": False}
+
+        # Try to get ANY entities
+        try:
+            raw_entities = ha_client.find_entities_by_pattern([""], None)
+            raw_count = len(raw_entities)
+            # Get first 5 entities for inspection
+            sample_entities = [e['entity_id'] for e in raw_entities[:5]] if raw_entities else []
+        except Exception as e:
+            raw_count = -1
+            sample_entities = []
+            logger.error(f"Error getting raw entities: {str(e)}", exc_info=True)
+
+        # Specific tests for your entity types
+        specific_tests = {
+            "ble_test": len(ha_client.find_entities_by_pattern(['ble'], [])),
+            "bluetooth_test": len(ha_client.find_entities_by_pattern(['bluetooth'], [])),
+            "distance_test": len(ha_client.find_entities_by_pattern(['distance'], [])),
+            "sensor_ble_test": len(ha_client.find_entities_by_pattern(['ble'], ['sensor'])),
+            "any_starting_with_sensor": len(ha_client.find_entities_by_pattern([""], ["sensor"]))
+        }
+
+        return jsonify({
+            "ha_status": ha_status,
+            "entity_scan": {
+                "total_entities": raw_count,
+                "sample_entities": sample_entities,
+                "specific_tests": specific_tests
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Debug endpoint failed: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/ai/data/rssi-distance', methods=['POST'])
 def add_rssi_distance_data():
