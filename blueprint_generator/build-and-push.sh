@@ -3,8 +3,40 @@
 
 set -e # Exit on error
 
-# Set version from config.yaml
-VERSION=$(grep 'version:' config.yaml | sed 's/.*"\([0-9.]*\)".*/\1/')
+# Get current version from config.yaml
+CURRENT_VERSION=$(grep 'version:' config.yaml | sed 's/.*"\([0-9.]*\)".*/\1/')
+echo "Current version: $CURRENT_VERSION"
+
+# Increment version by 0.0.01
+NEW_VERSION=$(awk -v ver="$CURRENT_VERSION" 'BEGIN { printf("%.2f", ver + 0.01) }')
+echo "New version: $NEW_VERSION"
+
+# Update version in config.yaml
+sed -i "s/version: \"$CURRENT_VERSION\"/version: \"$NEW_VERSION\"/" config.yaml
+
+# Update repository.json in root directory
+cd ..
+if [ -f repository.json ]; then
+    echo "Updating repository.json..."
+    # Update root version
+    sed -i "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" repository.json
+    # Update addon version
+    sed -i "s/\"version\": \"$CURRENT_VERSION\",/\"version\": \"$NEW_VERSION\",/" repository.json
+else
+    echo "Warning: repository.json not found in root directory."
+fi
+
+# Update build.yaml
+cd blueprint_generator
+if [ -f build.yaml ]; then
+    echo "Updating build.yaml..."
+    sed -i "s/org.opencontainers.image.version: \"$CURRENT_VERSION\"/org.opencontainers.image.version: \"$NEW_VERSION\"/" build.yaml
+else
+    echo "Warning: build.yaml not found."
+fi
+
+# Set version for building
+VERSION=$NEW_VERSION
 echo "Building version $VERSION"
 
 # Build the image
@@ -25,28 +57,8 @@ echo "$GITHUB_TOKEN" | docker login ghcr.io -u DeliciousHouse --password-stdin
 docker push ghcr.io/delicioushouse/blueprint-generator-amd64:$VERSION
 docker push ghcr.io/delicioushouse/blueprint-generator-amd64:latest
 
-# Update repository.json in root directory
-cd ..
-if [ -f repository.json ]; then
-    echo "Updating repository.json..."
-    # Check repository structure and update accordingly
-    if grep -q '"addons"' repository.json; then
-        jq --arg ver "$VERSION" '(.addons[] | select(.slug == "blueprint_generator")).version = $ver' repository.json > repository.json.new
-        mv repository.json.new repository.json
-        echo "Updated repository.json with version $VERSION (addons structure)"
-    elif grep -q '"blueprints"' repository.json; then
-        jq --arg ver "$VERSION" '(.blueprints[] | select(.slug == "blueprint_generator")).version = $ver' repository.json > repository.json.new
-        mv repository.json.new repository.json
-        echo "Updated repository.json with version $VERSION (blueprints structure)"
-    else
-        echo "Warning: Could not determine repository.json structure. Manual update required."
-    fi
-else
-    echo "Warning: repository.json not found in root directory."
-fi
-
 # Commit and push changes to GitHub
-git add blueprint_generator/config.yaml repository.json blueprint_generator/Dockerfile blueprint_generator/build-and-push.sh
+git add config.yaml ../repository.json Dockerfile build-and-push.sh build.yaml
 git commit -m "Update Blueprint Generator to version $VERSION"
 git push origin main
 
