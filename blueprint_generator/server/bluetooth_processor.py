@@ -199,96 +199,123 @@ class BluetoothProcessor:
         return result
 
     def process_bluetooth_sensors(self) -> Dict:
-        """Process Bluetooth sensors from Home Assistant and prepare data for blueprint generation."""
         from .ha_client import HomeAssistantClient
 
         try:
             logger.info("Starting Bluetooth sensor processing from Home Assistant")
 
-            # Get data from Home Assistant
+            # Get BLE distance readings (not positions)
             ha_client = HomeAssistantClient()
             ble_devices = ha_client.get_private_ble_devices()
-            position_entities = ha_client.get_bermuda_positions()
 
-            # Get entity area assignments for room hints using WebSocket
-            registry = ha_client.get_entity_registry_websocket()
+            # Debug log what we received
+            logger.info(f"BLE devices type: {type(ble_devices)}")
+            logger.info(f"BLE devices count: {len(ble_devices) if ble_devices else 0}")
 
-            # Get areas (for room hints)
-            areas = ha_client.get_areas()
+            # Get static sensor positions (the known positions of your BLE proxies)
+            sensor_positions = self.get_initial_sensor_positions()
 
-            # Use position entities directly instead of calculating from RSSI
+            # Extract BLE distance readings
+            distance_readings = []
+            for device in ble_devices:
+                try:
+                    if ('entity_id' in device and 'state' in device and
+                        ('distance_to' in device['entity_id'] or 'ble_distance' in device['entity_id'])):
+
+                        # Extract device ID and sensor ID from entity_id
+                        parts = device['entity_id'].split('_')
+                        if len(parts) >= 4:
+                            device_id = parts[0] + "_" + parts[1]  # e.g., "madisons_iphone"
+                            sensor_id = '_'.join(parts[3:])  # e.g., "bathroom_ble"
+
+                            # Get distance value
+                            try:
+                                distance = float(device['state'])
+                                # Convert to meters if needed
+                                if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
+                                    distance *= 0.3048  # Convert feet to meters
+
+                                # Find sensor position
+                                sensor_position = None
+                                for s_id, pos in sensor_positions.items():
+                                    if sensor_id in s_id:
+                                        sensor_position = pos
+                                        break
+
+                                if sensor_position:
+                                    # Create a reading entry
+                                    distance_readings.append({
+                                        'device_id': device_id,
+                                        'sensor_id': sensor_id,
+                                        'distance': distance,
+                                        'sensor_location': sensor_position
+                                    })
+                                    logger.info(f"Found distance reading: {device_id} to {sensor_id}: {distance}m")
+                            except (ValueError, TypeError):
+                                pass
+                except Exception as e:
+                    logger.warning(f"Error processing BLE device: {e}")
+
+            # Use trilateration to calculate positions from distances
             device_positions = {}
+            devices = {}
 
-            # Debug logging to see what we're getting
-            logger.info(f"Position entities type: {type(position_entities)}")
-            logger.info(f"Position entities count: {len(position_entities) if position_entities else 0}")
-            if position_entities and len(position_entities) > 0:
-                # Log a sample position entity
-                if isinstance(position_entities, dict):
-                    sample_key = list(position_entities.keys())[0]
-                    sample = position_entities[sample_key]
-                else:
-                    sample = position_entities[0]
-                logger.info(f"Sample position entity structure: {sample}")
+            # Group by device
+            for reading in distance_readings:
+                device_id = reading['device_id']
+                if device_id not in devices:
+                    devices[device_id] = []
+                devices[device_id].append(reading)
 
-            # Handle position_entities whether it's a list or dictionary
-            if isinstance(position_entities, dict):
-                # Process as dictionary
-                for entity_id, data in position_entities.items():
-                    if 'attributes' in data and 'position' in data['attributes']:
-                        position = data['attributes']['position']
+            # Calculate position for each device
+            for device_id, readings in devices.items():
+                if len(readings) >= 3:  # Need at least 3 distances for trilateration
+                    try:
+                        position = self._trilaterate_from_distances(readings)
+                        if position:
+                            device_positions[device_id] = position
+                            logger.info(f"Calculated position for {device_id}: {position}")
+                    except Exception as e:
+                        logger.warning(f"Error calculating position for {device_id}: {e}")
 
-                        # Convert units and add to positions
-                        # [rest of your existing processing code]
+            # Process with your existing AI enhancements
+            if device_positions:
+                try:
+                    # Apply movement pattern detection
+                    movement_patterns = self.ai_processor.detect_movement_patterns()
+                    for device_id, pattern in movement_patterns.items():
+                        if device_id in device_positions and pattern.get('static', False):
+                            device_positions[device_id]['accuracy'] *= 0.8
 
-            elif isinstance(position_entities, list):
-                # Process as list
-                for entity in position_entities:
-                    if isinstance(entity, dict) and 'entity_id' in entity:
-                        entity_id = entity['entity_id']
-                        if 'attributes' in entity and 'position' in entity['attributes']:
-                            position = entity['attributes']['position']
+                    # Apply spatial memory
+                    device_positions = self.ai_processor.apply_spatial_memory(device_positions)
 
-                            # Convert units if needed (feet → meters)
-                            x = float(position.get('x', 0))
-                            y = float(position.get('y', 0))
-                            z = float(position.get('z', 0))
+                    # Room detection
+                    rooms = self.detect_rooms(device_positions)
 
-                            if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
-                                x *= 0.3048
-                                y *= 0.3048
-                                z *= 0.3048
+                    # Save positions to database
+                    self.save_device_positions_to_db(device_positions)
 
-                            device_positions[entity_id] = {
-                                'x': x,
-                                'y': y,
-                                'z': z,
-                                'accuracy': float(position.get('accuracy', 5.0)),
-                                'source': 'bermuda'
-                            }
+                    logger.info(f"Processed {len(distance_readings)} distance readings, calculated {len(device_positions)} positions")
 
-            # Apply movement pattern detection
-            movement_patterns = self.ai_processor.detect_movement_patterns()
-            for device_id, pattern in movement_patterns.items():
-                if device_id in device_positions and pattern.get('static', False):
-                    if 'accuracy' in device_positions[device_id]:
-                        device_positions[device_id]['accuracy'] *= 0.8
+                    return {
+                        "processed": len(distance_readings),
+                        "devices": len(device_positions),
+                        "rooms": len(rooms),
+                        "device_positions": device_positions,
+                        "room_list": rooms
+                    }
+                except Exception as e:
+                    logger.error(f"Error in AI processing: {e}")
 
-            # Apply spatial memory
-            device_positions = self.ai_processor.apply_spatial_memory(device_positions)
-
-            # Room detection
-            rooms = self.detect_rooms(device_positions)
-
-            # Save positions to database
-            self.save_device_positions_to_db(device_positions)
-
+            # If we get here, we didn't find any positions
+            logger.warning("No valid positions calculated from distance readings")
             return {
-                "processed": len(position_entities),
-                "devices": len(device_positions),
-                "rooms": len(rooms),
-                "device_positions": device_positions,
-                "rooms": rooms
+                "processed": len(distance_readings),
+                "devices": 0,
+                "rooms": 0,
+                "device_positions": {},
+                "room_list": []
             }
         except Exception as e:
             logger.error(f"Error processing Bluetooth sensors: {e}")
@@ -448,6 +475,56 @@ class BluetoothProcessor:
             'y': float(result.x[1]),
             'z': float(result.x[2]),
             'accuracy': float(accuracy)
+        }
+
+    def _trilaterate_from_distances(self, readings: List[Dict]) -> Dict:
+        """Calculate position using distance readings from known points."""
+        if len(readings) < 3:
+            return None
+
+        # Extract sensor positions and distances
+        positions = []
+        distances = []
+
+        for reading in readings:
+            positions.append([
+                reading['sensor_location']['x'],
+                reading['sensor_location']['y'],
+                reading['sensor_location']['z']
+            ])
+            distances.append(reading['distance'])
+
+        positions = np.array(positions)
+        distances = np.array(distances)
+
+        # Define objective function for minimization
+        def objective(point):
+            return sum((np.linalg.norm(positions - point, axis=1) - distances) ** 2)
+
+        # Initial guess: centroid of sensor positions
+        initial_guess = np.mean(positions, axis=0)
+
+        # Minimize the objective function
+        result = minimize(
+            objective,
+            initial_guess,
+            method='Nelder-Mead',
+            options={'maxiter': 1000}
+        )
+
+        if not result.success:
+            logger.warning("Position estimation optimization failed")
+            return None
+
+        # Calculate accuracy estimate
+        accuracy = math.sqrt(result.fun / len(readings))
+
+        return {
+            'x': float(result.x[0]),
+            'y': float(result.x[1]),
+            'z': float(result.x[2]),
+            'accuracy': float(accuracy),
+            'source': 'trilateration'
         }
 
     def detect_rooms(self, positions: Dict[str, Dict[str, float]]) -> List[Dict]:
