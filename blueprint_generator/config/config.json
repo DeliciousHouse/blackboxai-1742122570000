@@ -7,14 +7,16 @@
     "database": "homeassistant"
   },
   "processing_params": {
-    "rssi_threshold": -75,
-    "minimum_sensors": 3,
+    "rssi_threshold": -90,
+    "minimum_sensors": 1,
     "accuracy_threshold": 1.0,
+    "use_ml_distance": true,
     "distance_calculation": {
       "reference_power": -59,
       "path_loss_exponent": 2.0
     },
-    "update_interval": 5
+    "update_interval": 5,
+    "max_distance": 1000
   },
   "blueprint_validation": {
     "min_room_area": 4,

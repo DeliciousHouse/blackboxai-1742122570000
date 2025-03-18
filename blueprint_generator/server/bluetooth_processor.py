@@ -1,6 +1,8 @@
 import json
 import logging
 import math
+import random
+import requests
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -46,6 +48,65 @@ class BluetoothProcessor:
                 'ml_fallback_threshold': 0.5  # Confidence threshold for ML model
             }
         }
+
+    def get_initial_sensor_positions(self) -> Dict:
+        """Generate initial sensor positions based on Home Assistant areas/rooms."""
+        from .ha_client import HomeAssistantClient
+        ha_client = HomeAssistantClient()
+
+        try:
+            # Get all areas (rooms) from Home Assistant
+            areas_response = requests.get(f"{ha_client.base_url}/api/areas", headers=ha_client.headers)
+            if areas_response.status_code != 200:
+                logger.error("Failed to get areas from Home Assistant")
+                return {}
+
+            areas = areas_response.json()
+            logger.info(f"Found {len(areas)} areas in Home Assistant")
+
+            # Create a simple grid layout (approximate layout)
+            grid_size = math.ceil(math.sqrt(len(areas)))
+            area_positions = {}
+
+            # Place areas in a grid pattern
+            for i, area in enumerate(areas):
+                row = i // grid_size
+                col = i % grid_size
+                area_positions[area['area_id']] = {
+                    'x': col * 5,  # 5-meter grid spacing
+                    'y': row * 5,
+                    'z': 0,
+                    'name': area.get('name', f"Area {i}")
+                }
+
+            # Get devices and their area assignments
+            entities = requests.get(f"{ha_client.base_url}/api/states", headers=ha_client.headers).json()
+            registry = requests.get(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers).json()
+
+            # Create a map of entity_id to area_id
+            entity_areas = {}
+            for item in registry:
+                if 'entity_id' in item and 'area_id' in item and item['area_id']:
+                    entity_areas[item['entity_id']] = item['area_id']
+
+            # Create sensor positions based on area assignments
+            sensor_positions = {}
+            for entity in entities:
+                entity_id = entity.get('entity_id')
+                if entity_id in entity_areas and entity_areas[entity_id] in area_positions:
+                    area = area_positions[entity_areas[entity_id]]
+                    # Add slight offset within room
+                    sensor_positions[entity_id] = {
+                        'x': area['x'] + random.uniform(-1.5, 1.5),
+                        'y': area['y'] + random.uniform(-1.5, 1.5),
+                        'z': 0
+                    }
+
+            return sensor_positions
+
+        except Exception as e:
+            logger.error(f"Failed to generate initial sensor positions: {str(e)}")
+            return {}
 
     def process_reading(
         self,
@@ -137,12 +198,34 @@ class BluetoothProcessor:
                 if device_id not in ble_device_map:
                     ble_device_map[device_id] = []
 
-                # Extract sensor location from entity attributes if available
-                sensor_location = {'x': 0, 'y': 0, 'z': 0}  # Default
+                # Try to get location from entity attributes or known mapping
+                if 'sensor_location' in device.get('attributes', {}):
+                    # Use attributes if available
+                    sensor_attrs = device['attributes']['sensor_location']
+                    sensor_location = {
+                        'x': float(sensor_attrs.get('x', 0)),
+                        'y': float(sensor_attrs.get('y', 0)),
+                        'z': float(sensor_attrs.get('z', 0))
+                    }
+                else:
+                    # Get dynamically generated sensor positions based on HA areas
+                    if not hasattr(self, '_sensor_positions'):
+                        self._sensor_positions = self.get_initial_sensor_positions()
+
+                    entity_id = device.get('entity_id')
+                    if entity_id in self._sensor_positions:
+                        sensor_location = self._sensor_positions[entity_id]
+                    else:
+                        # Try partial matching
+                        for sensor_id, location in self._sensor_positions.items():
+                            if sensor_id in entity_id or entity_id in sensor_id:
+                                sensor_location = location
+                                logger.debug(f"Using partial match for {entity_id}: {sensor_id}")
+                                break
 
                 # If distance is available, process it
                 if 'distance' in device and device['distance'] is not None:
-                    rssi = device.get('rssi', -70)  # Use provided RSSI or default
+                    rssi = device.get('rssi', -80)  # Use provided RSSI or default
                     # Store reading with device, sensor, and location info
                     ble_device_map[device_id].append({
                         'device_id': device_id,
@@ -166,7 +249,7 @@ class BluetoothProcessor:
             logger.info(f"Detected {len(rooms)} rooms from {len(device_positions)} device positions")
 
             # Train AI models if we have enough data
-            if len(ble_devices) > 10:
+            if len(ble_devices) > 5:
                 try:
                     logger.info("Training AI models with collected data")
                     # This trains models based on data we've seen
