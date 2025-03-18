@@ -4,6 +4,7 @@ import json
 import logging.config
 import os
 from pathlib import Path
+from server.db import init_sqlite_db
 
 # Set up logging first
 logging.config.fileConfig('config/logging.conf')
@@ -27,16 +28,28 @@ def load_config():
 def init_database():
     """Initialize database schema."""
     try:
-        schema_discovery = SchemaDiscovery()
-        schema = schema_discovery.discover_schema()
+        # First, initialize SQLite database (for write operations)
+        logger.info("Initializing SQLite database...")
+        if not init_sqlite_db():
+            logger.error("Failed to initialize SQLite database")
+            return False
+        logger.info("SQLite database initialized successfully")
 
-        # Check if schema is valid, create it if not
-        if not schema_discovery.validate_schema(schema):
-            logger.info("Database schema is invalid or missing. Attempting to create it...")
-            if not schema_discovery.create_schema():
-                logger.error("Failed to initialize database schema")
-                return False
-            logger.info("Database schema initialized successfully")
+        # Then, validate MariaDB schema (for read-only operations)
+        try:
+            schema_discovery = SchemaDiscovery()
+            schema = schema_discovery.discover_schema()
+
+            # Just validate schema - don't try to create it (read-only)
+            if not schema_discovery.validate_schema(schema):
+                logger.warning("Home Assistant database schema is not as expected. " +
+                              "Some queries may fail but read-only operations should work.")
+            else:
+                logger.info("Home Assistant database schema validated successfully")
+        except Exception as e:
+            logger.warning(f"Home Assistant database schema validation failed: {str(e)}")
+            logger.warning("Continuing with SQLite only - some features may be limited")
+
         return True
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}")
