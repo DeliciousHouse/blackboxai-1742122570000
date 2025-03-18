@@ -55,51 +55,8 @@ class BluetoothProcessor:
         ha_client = HomeAssistantClient()
 
         try:
-            # Try template endpoint to get areas
-            template_data = {
-                "template": """
-                {% set result = namespace(areas=[]) %}
-                {% for area in areas() %}
-                    {% set area_data = {'area_id': area.id, 'name': area.name} %}
-                    {% set result.areas = result.areas + [area_data] %}
-                {% endfor %}
-                {{ result.areas | to_json }}
-                """
-            }
-            logger.info("Attempting to get areas using template API")
-            response = requests.post(
-                f"{ha_client.base_url}/api/template",
-                headers=ha_client.headers,
-                json=template_data
-            )
-
-            # Always use fallback grid - the template API is failing
-            logger.warning("Using fallback grid for sensor positions")
-            areas = [
-                {"area_id": "lounge", "name": "Lounge"},
-                {"area_id": "kitchen", "name": "Kitchen"},
-                {"area_id": "master_bedroom", "name": "Master Bedroom"},
-                {"area_id": "master_bathroom", "name": "Master Bathroom"},
-                {"area_id": "office", "name": "Office"},
-                {"area_id": "dining_room", "name": "Dining Room"}
-            ]
-
-
-            if response.status_code == 200:
-                try:
-                    areas = json.loads(response.text)
-                    logger.info(f"Found {len(areas)} areas using template API")
-
-                except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON from template API: {response.text[:100]}")
-                    areas = None
-            else:
-                logger.warning(f"Template API returned status {response.status_code}")
-                areas = None
-
-            # Create a simple grid layout (approximate layout)
-            grid_size = math.ceil(math.sqrt(len(areas)))
-            area_positions = {}
+            # Get areas using the WebSocket method in ha_client.py
+            areas = ha_client.get_areas()
 
             # Create a simple grid layout
             area_positions = {}
@@ -131,7 +88,6 @@ class BluetoothProcessor:
                 entity_id = entity.get('entity_id')
                 if entity_id in entity_areas and entity_areas[entity_id] in area_positions:
                     area = area_positions[entity_areas[entity_id]]
-                    # Add slight offset within room
                     sensor_positions[entity_id] = {
                         'x': area['x'] + random.uniform(-1.5, 1.5),
                         'y': area['y'] + random.uniform(-1.5, 1.5),

@@ -1,10 +1,80 @@
 import requests
 import json
+import websocket
 import logging
 import os
 from typing import Dict, List, Optional
+from threading import Event
 
 logger = logging.getLogger(__name__)
+
+def get_area_registry(base_url, token):
+    """Get the area registry from Home Assistant using a WebSocket connection."""
+    # Convert HTTP URL to WebSocket URL
+    ws_url = base_url.replace('http://', 'ws://').replace('https://', 'wss://')
+    ws_url = f"{ws_url}/api/websocket"
+
+    areas = []
+    response_received = Event()
+    message_id = 1
+
+    def on_message(ws, message):
+        nonlocal areas
+        data = json.loads(message)
+        logger.debug(f"WebSocket message: {data.get('type')}")
+
+        if data.get('type') == 'auth_required':
+            # Send authentication
+            ws.send(json.dumps({
+                "type": "auth",
+                "access_token": token
+            }))
+
+        elif data.get('type') == 'auth_ok':
+            # Now authenticated, request area registry
+            ws.send(json.dumps({
+                "id": message_id,
+                "type": "config/area_registry/list"
+            }))
+
+        elif data.get('type') == 'result' and data.get('success'):
+            # Got area registry results
+            if 'result' in data and isinstance(data['result'], list):
+                areas = data['result']
+                logger.info(f"Received {len(areas)} areas via WebSocket")
+                response_received.set()
+                ws.close()
+
+    def on_error(ws, error):
+        logger.error(f"WebSocket error: {error}")
+        response_received.set()
+
+    def on_close(ws, close_status_code, close_msg):
+        logger.debug(f"WebSocket closed: {close_msg}")
+        response_received.set()
+
+    def on_open(ws):
+        logger.debug("WebSocket connection established")
+
+    # Create WebSocket connection
+    ws = websocket.WebSocketApp(
+        ws_url,
+        on_open=on_open,
+        on_message=on_message,
+        on_error=on_error,
+        on_close=on_close
+    )
+
+    # Start connection in a separate thread
+    import threading
+    ws_thread = threading.Thread(target=ws.run_forever)
+    ws_thread.daemon = True
+    ws_thread.start()
+
+    # Wait for response or timeout
+    response_received.wait(timeout=10)
+
+    return areas
 
 class HomeAssistantClient:
     """Client for interacting with Home Assistant API."""
@@ -324,3 +394,38 @@ class HomeAssistantClient:
         except Exception as e:
             logger.error(f"Failed to get sensors from Home Assistant: {str(e)}")
             return []
+
+    def get_areas(self):
+        """Get all areas from Home Assistant."""
+        try:
+            # First try WebSocket approach
+            areas = get_area_registry(self.base_url, self.token)
+            if areas:
+                # Convert to expected format
+                return [{"area_id": area.get("area_id", area.get("id")),
+                        "name": area.get("name")}
+                    for area in areas]
+
+            # Fallback to HTTP API
+            logger.warning("WebSocket area fetch failed, trying HTTP API")
+            response = requests.get(f"{self.base_url}/api/config/area_registry",
+                                    headers=self.headers)
+            if response.status_code == 200:
+                areas = response.json()
+                return [{"area_id": area.get("area_id", area.get("id")),
+                        "name": area.get("name")}
+                    for area in areas]
+
+        except Exception as e:
+            logger.error(f"Failed to get areas: {e}")
+
+        # Return default areas if all methods fail
+        logger.warning("Using default areas")
+        return [
+            {"area_id": "lounge", "name": "Lounge"},
+            {"area_id": "kitchen", "name": "Kitchen"},
+            {"area_id": "master_bedroom", "name": "Master Bedroom"},
+            {"area_id": "master_bathroom", "name": "Master Bathroom"},
+            {"area_id": "office", "name": "Office"},
+            {"area_id": "dining_room", "name": "Dining Room"}
+        ]

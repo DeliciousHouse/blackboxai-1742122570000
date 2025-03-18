@@ -80,7 +80,7 @@ def start_processing_scheduler():
                 if result.get('device_positions'):
                     logger.info("Generating blueprint from processed data")
                     blueprint = blueprint_generator.generate_blueprint(
-                        positions=result.get('device_positions', {}),  # Changed from device_positions to positions
+                        device_positions=result.get('device_positions', {}),
                         rooms=result.get('rooms', [])
                     )
                     logger.info(f"Blueprint generated with {len(blueprint.get('rooms', []))} rooms")
