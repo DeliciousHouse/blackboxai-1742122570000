@@ -439,3 +439,72 @@ class HomeAssistantClient:
             {"area_id": "office", "name": "Office"},
             {"area_id": "dining_room", "name": "Dining Room"}
         ]
+
+    def get_entity_registry_websocket(self):
+        """Get entity registry from Home Assistant using WebSocket."""
+        # Convert HTTP URL to WebSocket URL
+        ws_url = self.base_url.replace('http://', 'ws://').replace('https://', 'wss://')
+        ws_url = f"{ws_url}/api/websocket"
+
+        entities = []
+        response_received = Event()
+
+        def on_message(ws, message):
+            nonlocal entities
+            try:
+                data = json.loads(message)
+                logger.debug(f"WebSocket message: {data.get('type')}")
+
+                if data.get('type') == 'auth_required':
+                    # Send authentication
+                    ws.send(json.dumps({
+                        "type": "auth",
+                        "access_token": self.token
+                    }))
+
+                elif data.get('type') == 'auth_ok':
+                    # Request entity registry
+                    ws.send(json.dumps({
+                        "id": 2,
+                        "type": "config/entity_registry/list"
+                    }))
+
+                elif data.get('type') == 'result' and data.get('id') == 2:
+                    # Got entity registry results
+                    if 'result' in data and isinstance(data['result'], list):
+                        entities = data['result']
+                        logger.info(f"Received {len(entities)} entity registry entries via WebSocket")
+                    response_received.set()
+                    ws.close()
+
+            except json.JSONDecodeError as e:
+                logger.error(f"WebSocket message not valid JSON: {e}")
+                logger.debug(f"Message content (first 100 chars): {message[:100]}")
+            except Exception as e:
+                logger.error(f"Error processing WebSocket message: {e}")
+
+        def on_error(ws, error):
+            logger.error(f"WebSocket error: {error}")
+            response_received.set()
+
+        def on_close(ws, close_status_code, close_msg):
+            logger.debug("WebSocket closed")
+            response_received.set()
+
+        # Create WebSocket connection
+        ws = websocket.WebSocketApp(
+            ws_url,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close
+        )
+
+        # Start connection in a separate thread
+        ws_thread = threading.Thread(target=ws.run_forever)
+        ws_thread.daemon = True
+        ws_thread.start()
+
+        # Wait for response or timeout
+        response_received.wait(timeout=10)
+
+        return entities

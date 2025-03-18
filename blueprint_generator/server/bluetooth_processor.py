@@ -209,8 +209,8 @@ class BluetoothProcessor:
             ble_devices = ha_client.get_private_ble_devices()
             position_entities = ha_client.get_bermuda_positions()
 
-            # Get entity area assignments for room hints
-            registry = safe_json_request(f"{ha_client.base_url}/api/config/entity_registry", headers=ha_client.headers)
+            # Get entity area assignments for room hints using WebSocket
+            registry = ha_client.get_entity_registry_websocket()
             entity_areas = {}
             for item in registry:
                 if 'entity_id' in item and 'area_id' in item and item['area_id']:
