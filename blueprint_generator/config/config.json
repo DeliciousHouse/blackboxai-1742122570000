@@ -9,13 +9,13 @@
   "processing_params": {
     "rssi_threshold": -85,
     "minimum_sensors": 2,
-    "accuracy_threshold": 1.0,
+    "accuracy_threshold": 10.0,
     "use_ml_distance": true,
     "distance_calculation": {
-      "reference_power": -59,
-      "path_loss_exponent": 2.0
+      "reference_power": -66,
+      "path_loss_exponent": 2.8
     },
-    "update_interval": 5,
+    "update_interval": 2,
     "max_distance": 1000
   },
   "blueprint_validation": {

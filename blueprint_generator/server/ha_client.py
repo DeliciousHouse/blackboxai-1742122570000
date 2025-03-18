@@ -439,7 +439,14 @@ class HomeAssistantClient:
             {"area_id": "master_bedroom", "name": "Master Bedroom"},
             {"area_id": "master_bathroom", "name": "Master Bathroom"},
             {"area_id": "office", "name": "Office"},
-            {"area_id": "dining_room", "name": "Dining Room"}
+            {"area_id": "dining_room", "name": "Dining Room"},
+            {"area_id": "sky_floor", "name": "Sky Floor"},
+            {"area_id": "front_porch", "name": "Front Porch"},
+            {"area_id": "laundry_room", "name": "Laundry Room"},
+            {"area_id": "balcony", "name": "Balcony"},
+            {"area_id": "backyard", "name": "Backyard"},
+            {"area_id": "garage", "name": "Garage"},
+            {"area_id": "dressing_room", "name": "Dressing Room"}
         ]
 
     def get_entity_registry_websocket(self):

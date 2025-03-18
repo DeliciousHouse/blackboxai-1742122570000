@@ -70,7 +70,7 @@ class BlueprintGenerator:
                 "id": job_id,
                 "timestamp": datetime.now().isoformat(),
                 "rooms": [
-                    {"id": "lounge", "name": "Lounge", "dimensions": {"length": 5, "width": 4, "height": 2.5}}
+                    {"id": "lounge", "name": "Lounge", "dimensions": {"length": 5, "width": 4, "height": 3}}
                 ],
                 "walls": [],
                 "devices": []
