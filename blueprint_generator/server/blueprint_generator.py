@@ -336,7 +336,7 @@ class BlueprintGenerator:
         try:
             logger.info("Loading device positions from database")
             query = """
-            SELECT device_id, x, y, z, accuracy, source
+            SELECT device_id, position_data, source, accuracy, timestamp
             FROM device_positions
             WHERE timestamp = (SELECT MAX(timestamp) FROM device_positions)
             """
@@ -345,22 +345,32 @@ class BlueprintGenerator:
             positions = {}
             for row in results:
                 if isinstance(row, tuple):
-                    device_id, x, y, z, accuracy, source = row
+                    device_id, position_data, source, accuracy, timestamp = row
                 else:
                     device_id = row.get('device_id')
-                    x = row.get('x')
-                    y = row.get('y')
-                    z = row.get('z')
-                    accuracy = row.get('accuracy')
+                    position_data = row.get('position_data')
                     source = row.get('source')
+                    accuracy = row.get('accuracy')
+                    timestamp = row.get('timestamp')
 
-                positions[device_id] = {
-                    'x': float(x),
-                    'y': float(y),
-                    'z': float(z),
-                    'accuracy': float(accuracy) if accuracy else 1.0,
-                    'source': source
-                }
+                # Parse position data from JSON
+                try:
+                    if isinstance(position_data, str):
+                        position = json.loads(position_data)
+                    else:
+                        position = position_data
+
+                    # Ensure all required fields exist
+                    if all(k in position for k in ['x', 'y', 'z']):
+                        positions[device_id] = {
+                            'x': float(position['x']),
+                            'y': float(position['y']),
+                            'z': float(position['z']),
+                            'accuracy': float(accuracy if accuracy else position.get('accuracy', 1.0)),
+                            'source': source or position.get('source', 'unknown')
+                        }
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Error parsing position data for {device_id}: {e}")
 
             logger.info(f"Loaded {len(positions)} device positions from database")
             return positions

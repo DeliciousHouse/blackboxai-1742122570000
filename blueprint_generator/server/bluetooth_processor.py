@@ -230,13 +230,19 @@ class BluetoothProcessor:
             # Use test data to generate a blueprint
             logger.info("Using sample data for blueprint generation testing")
 
-            # Sample positions for testing - these will create a simple layout
+            # Sample positions for testing - using requested room names
             device_positions = {
                 "lounge_device": {"x": 0, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
                 "kitchen_device": {"x": 5, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
                 "master_bedroom_device": {"x": 0, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
                 "master_bathroom_device": {"x": 5, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "hallway_device": {"x": 2.5, "y": 2.5, "z": 0, "accuracy": 1.0, "source": "sample"}
+                "office_device": {"x": -5, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "dining_room_device": {"x": 2.5, "y": -3, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "garage_device": {"x": -5, "y": -5, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "sky_floor_device": {"x": 0, "y": 0, "z": 3, "accuracy": 1.0, "source": "sample"},
+                "balcony_device": {"x": 7, "y": 3, "z": 3, "accuracy": 1.0, "source": "sample"},
+                "front_porch_device": {"x": -2, "y": -7, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "laundry_room_device": {"x": 7, "y": -2, "z": 0, "accuracy": 1.0, "source": "sample"}
             }
 
             # Generate rooms from sample data
@@ -256,180 +262,6 @@ class BluetoothProcessor:
         except Exception as e:
             logger.error(f"Error processing Bluetooth sensors: {e}")
             return {"error": str(e)}
-
-        #     # Get static sensor positions (the known positions of your BLE proxies)
-        #     sensor_positions = self.get_initial_sensor_positions()
-        #     logger.info(f"Found {len(sensor_positions)} sensor positions: {list(sensor_positions.keys())}")
-
-        #     # Extract BLE distance readings
-        #     distance_readings = []
-        #     distance_entities_found = 0
-
-        #     for device in ble_devices:
-        #         try:
-        #             entity_id = device.get('entity_id', '').lower()
-
-        #             # More flexible entity pattern matching
-        #             is_distance_entity = (
-        #                 'distance' in entity_id or
-        #                 'ble_distance' in entity_id or
-        #                 'distance_to' in entity_id or
-        #                 # Add these specific Bermuda patterns
-        #                 ('iphone' in entity_id and 'ble' in entity_id) or
-        #                 ('phone' in entity_id and 'distance' in entity_id) or
-        #                 ('beacon' in entity_id and 'distance' in entity_id)
-        #             )
-
-        #             if is_distance_entity and 'state' in device:
-        #                 distance_entities_found += 1
-        #                 # Log what we found
-        #                 logger.info(f"Found distance entity: {entity_id} with state {device.get('state')}")
-
-        #                 # Try more flexible pattern matching for device/sensor IDs
-        #                 if '_ble_distance_to_' in entity_id:
-        #                     parts = entity_id.split('_ble_distance_to_')
-        #                     device_id = parts[0]
-        #                     sensor_id = parts[1]
-        #                     logger.info(f"Matched pattern '_ble_distance_to_': device={device_id}, sensor={sensor_id}")
-        #                 elif '_distance_to_' in entity_id:
-        #                     parts = entity_id.split('_distance_to_')
-        #                     device_id = parts[0]
-        #                     sensor_id = parts[1]
-        #                     logger.info(f"Matched pattern '_distance_to_': device={device_id}, sensor={sensor_id}")
-        #                 elif '_ble_distance_' in entity_id:
-        #                     parts = entity_id.split('_ble_distance_')
-        #                     device_id = parts[0]
-        #                     sensor_id = parts[1]
-        #                     logger.info(f"Matched pattern '_ble_distance_': device={device_id}, sensor={sensor_id}")
-        #                 else:
-        #                     # Extract device ID and sensor ID using more flexible pattern
-        #                     parts = entity_id.split('_')
-        #                     if len(parts) >= 3:
-        #                         device_id = '_'.join(parts[0:2])  # e.g., "sensor_madisons"
-        #                         sensor_id = '_'.join(parts[2:])   # e.g., "master_bathroom_ble"
-        #                         logger.info(f"Matched generic pattern: device={device_id}, sensor={sensor_id}")
-        #                     else:
-        #                         logger.info(f"Couldn't match pattern for {entity_id}")
-        #                         continue
-
-        #                 # Process the distance reading
-        #                 try:
-        #                     distance = float(device['state'])
-        #                     # Convert to meters if needed
-        #                     if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
-        #                         distance *= 0.3048  # Convert feet to meters
-
-        #                     # Find sensor position
-        #                     sensor_position = None
-        #                     for s_id, pos in sensor_positions.items():
-        #                         if sensor_id in s_id:
-        #                             sensor_position = pos
-        #                             logger.info(f"Found position for sensor {sensor_id}: {pos}")
-        #                             break
-
-        #                     if not sensor_position:
-        #                         logger.warning(f"No position found for sensor {sensor_id}")
-
-        #                     if sensor_position:
-        #                         # Create a reading entry
-        #                         distance_readings.append({
-        #                             'device_id': device_id,
-        #                             'sensor_id': sensor_id,
-        #                             'distance': distance,
-        #                             'sensor_location': sensor_position
-        #                         })
-        #                         logger.info(f"Added distance reading: {device_id} to {sensor_id}: {distance}m")
-        #                 except (ValueError, TypeError) as e:
-        #                     logger.warning(f"Error processing distance: {e}")
-
-        #         except Exception as e:
-        #             logger.warning(f"Error processing BLE device: {e}")
-
-        #     logger.info(f"Found {distance_entities_found} distance entities, extracted {len(distance_readings)} valid readings")
-
-        #     # Use trilateration to calculate positions from distances
-        #     device_positions = {}
-        #     devices = {}
-
-        #     # Group by device
-        #     for reading in distance_readings:
-        #         device_id = reading['device_id']
-        #         if device_id not in devices:
-        #             devices[device_id] = []
-        #         devices[device_id].append(reading)
-
-        #     # Calculate position for each device
-        #     for device_id, readings in devices.items():
-        #         if len(readings) >= 3:  # Need at least 3 distances for trilateration
-        #             try:
-        #                 position = self._trilaterate_from_distances(readings)
-        #                 if position:
-        #                     device_positions[device_id] = position
-        #                     logger.info(f"Calculated position for {device_id}: {position}")
-        #             except Exception as e:
-        #                 logger.warning(f"Error calculating position for {device_id}: {e}")
-
-        #     # Process with your existing AI enhancements
-        #     if device_positions:
-        #         try:
-        #             # Apply AI enhancements
-        #             movement_patterns = self.ai_processor.detect_movement_patterns()
-        #             for device_id, pattern in movement_patterns.items():
-        #                 if device_id in device_positions and pattern.get('static', False):
-        #                     device_positions[device_id]['accuracy'] *= 0.8
-
-        #             device_positions = self.ai_processor.apply_spatial_memory(device_positions)
-        #             rooms = self.detect_rooms(device_positions)
-        #             self.save_device_positions_to_db(device_positions)
-
-        #             logger.info(f"Processed {len(distance_readings)} distance readings, calculated {len(device_positions)} positions")
-
-        #             return {
-        #                 "processed": len(distance_readings),
-        #                 "devices": len(device_positions),
-        #                 "rooms": len(rooms),
-        #                 "device_positions": device_positions,
-        #                 "room_list": rooms
-        #             }
-        #         except Exception as e:
-        #             logger.error(f"Error in AI processing: {e}")
-        #             # Continue to sample data if AI processing fails
-
-        #     # If we reach here, either no positions were calculated or AI processing failed
-        #     logger.warning("Using sample data for testing - no valid positions calculated from distance readings")
-
-        #     # Sample positions for testing
-        #     device_positions = {
-        #         "sample_device_1": {"x": 3.2, "y": 2.8, "z": 1.0, "accuracy": 1.5, "source": "sample"},
-        #         "sample_device_2": {"x": 6.5, "y": 4.1, "z": 1.0, "accuracy": 1.8, "source": "sample"},
-        #         "sample_device_3": {"x": 8.3, "y": 1.7, "z": 1.0, "accuracy": 1.2, "source": "sample"}
-        #     }
-
-        #     # Use sample data
-        #     rooms = self.detect_rooms(device_positions)
-        #     self.save_device_positions_to_db(device_positions)
-        #     logger.info(f"Added {len(device_positions)} sample positions")
-
-        #     return {
-        #         "processed": len(ble_devices),
-        #         "devices": len(device_positions),
-        #         "rooms": len(rooms),
-        #         "device_positions": device_positions,
-        #         "room_list": rooms
-        #     }
-
-        #     # If we get here, we didn't find any positions
-        #     logger.warning("No valid positions calculated from distance readings")
-        #     return {
-        #         "processed": len(distance_readings),
-        #         "devices": 0,
-        #         "rooms": 0,
-        #         "device_positions": {},
-        #         "room_list": []
-        #     }
-        # except Exception as e:
-        #     logger.error(f"Error processing Bluetooth sensors: {e}")
-        #     return {"error": str(e)}
 
     def estimate_positions(self, time_window: int = 300) -> Dict[str, Dict[str, float]]:
         """Estimate positions of all devices in the time window."""
@@ -647,7 +479,7 @@ class BluetoothProcessor:
             logger.info("Creating sample rooms from test device positions")
             rooms = []
 
-            # Living room (position at 0,0)
+            # Lounge (position at 0,0,0)
             if "lounge_device" in positions:
                 rooms.append({
                     'id': 'lounge',
@@ -660,7 +492,7 @@ class BluetoothProcessor:
                     }
                 })
 
-            # Kitchen (position at 5,0)
+            # Kitchen (position at 5,0,0)
             if "kitchen_device" in positions:
                 rooms.append({
                     'id': 'kitchen',
@@ -673,20 +505,20 @@ class BluetoothProcessor:
                     }
                 })
 
-            # master_bedroom (position at 0,5)
+            # Master Bedroom (position at 0,5,0)
             if "master_bedroom_device" in positions:
                 rooms.append({
                     'id': 'master_bedroom',
                     'name': 'Master Bedroom',
                     'center': {'x': 0, 'y': 5, 'z': 0},
-                    'dimensions': {'width': 4, 'length': 4, 'height': 2.5},
+                    'dimensions': {'width': 5, 'length': 5, 'height': 2.5},
                     'bounds': {
-                        'min': {'x': -2, 'y': 3, 'z': 0},
-                        'max': {'x': 2, 'y': 7, 'z': 2.5}
+                        'min': {'x': -2.5, 'y': 2.5, 'z': 0},
+                        'max': {'x': 2.5, 'y': 7.5, 'z': 2.5}
                     }
                 })
 
-            # master_bathroom (position at 5,5)
+            # Master Bathroom (position at 5,5,0)
             if "master_bathroom_device" in positions:
                 rooms.append({
                     'id': 'master_bathroom',
@@ -699,16 +531,94 @@ class BluetoothProcessor:
                     }
                 })
 
-            # Hallway (position at 2.5,2.5)
-            if "hallway_device" in positions:
+            # Office (position at -5,0,0)
+            if "office_device" in positions:
                 rooms.append({
-                    'id': 'hallway',
-                    'name': 'Hallway',
-                    'center': {'x': 2.5, 'y': 2.5, 'z': 0},
-                    'dimensions': {'width': 2, 'length': 5, 'height': 2.5},
+                    'id': 'office',
+                    'name': 'Office',
+                    'center': {'x': -5, 'y': 0, 'z': 0},
+                    'dimensions': {'width': 4, 'length': 4, 'height': 2.5},
                     'bounds': {
-                        'min': {'x': 1.5, 'y': 0, 'z': 0},
-                        'max': {'x': 3.5, 'y': 5, 'z': 2.5}
+                        'min': {'x': -7, 'y': -2, 'z': 0},
+                        'max': {'x': -3, 'y': 2, 'z': 2.5}
+                    }
+                })
+
+            # Dining Room (position at 2.5,-3,0)
+            if "dining_room_device" in positions:
+                rooms.append({
+                    'id': 'dining_room',
+                    'name': 'Dining Room',
+                    'center': {'x': 2.5, 'y': -3, 'z': 0},
+                    'dimensions': {'width': 4, 'length': 4, 'height': 2.5},
+                    'bounds': {
+                        'min': {'x': 0.5, 'y': -5, 'z': 0},
+                        'max': {'x': 4.5, 'y': -1, 'z': 2.5}
+                    }
+                })
+
+            # Garage (position at -5,-5,0)
+            if "garage_device" in positions:
+                rooms.append({
+                    'id': 'garage',
+                    'name': 'Garage',
+                    'center': {'x': -5, 'y': -5, 'z': 0},
+                    'dimensions': {'width': 6, 'length': 6, 'height': 3},
+                    'bounds': {
+                        'min': {'x': -8, 'y': -8, 'z': 0},
+                        'max': {'x': -2, 'y': -2, 'z': 3}
+                    }
+                })
+
+            # Sky Floor (position at 0,0,3)
+            if "sky_floor_device" in positions:
+                rooms.append({
+                    'id': 'sky_floor',
+                    'name': 'Sky Floor',
+                    'center': {'x': 0, 'y': 0, 'z': 3},
+                    'dimensions': {'width': 8, 'length': 8, 'height': 2.5},
+                    'bounds': {
+                        'min': {'x': -4, 'y': -4, 'z': 3},
+                        'max': {'x': 4, 'y': 4, 'z': 5.5}
+                    }
+                })
+
+            # Balcony (position at 7,3,3)
+            if "balcony_device" in positions:
+                rooms.append({
+                    'id': 'balcony',
+                    'name': 'Balcony',
+                    'center': {'x': 7, 'y': 3, 'z': 3},
+                    'dimensions': {'width': 3, 'length': 5, 'height': 2.5},
+                    'bounds': {
+                        'min': {'x': 5.5, 'y': 0.5, 'z': 3},
+                        'max': {'x': 8.5, 'y': 5.5, 'z': 5.5}
+                    }
+                })
+
+            # Front Porch (position at -2,-7,0)
+            if "front_porch_device" in positions:
+                rooms.append({
+                    'id': 'front_porch',
+                    'name': 'Front Porch',
+                    'center': {'x': -2, 'y': -7, 'z': 0},
+                    'dimensions': {'width': 4, 'length': 3, 'height': 2.5},
+                    'bounds': {
+                        'min': {'x': -4, 'y': -8.5, 'z': 0},
+                        'max': {'x': 0, 'y': -5.5, 'z': 2.5}
+                    }
+                })
+
+            # Laundry Room (position at 7,-2,0)
+            if "laundry_room_device" in positions:
+                rooms.append({
+                    'id': 'laundry_room',
+                    'name': 'Laundry Room',
+                    'center': {'x': 7, 'y': -2, 'z': 0},
+                    'dimensions': {'width': 3, 'length': 3, 'height': 2.5},
+                    'bounds': {
+                        'min': {'x': 5.5, 'y': -3.5, 'z': 0},
+                        'max': {'x': 8.5, 'y': -0.5, 'z': 2.5}
                     }
                 })
 
