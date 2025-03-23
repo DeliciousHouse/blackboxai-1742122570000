@@ -325,6 +325,47 @@ class BlueprintGenerator:
             VALUES (%s, 'active')
             """
             execute_write_query(query, (blueprint_json,))
+            logger.info("Blueprint saved successfully to database")
+            return True
 
         except Exception as e:
             logger.error(f"Failed to save blueprint: {str(e)}")
+
+    def get_device_positions_from_db(self):
+        """Get the latest device positions from the database."""
+        try:
+            logger.info("Loading device positions from database")
+            query = """
+            SELECT device_id, x, y, z, accuracy, source
+            FROM device_positions
+            WHERE timestamp = (SELECT MAX(timestamp) FROM device_positions)
+            """
+            results = execute_query(query)
+
+            positions = {}
+            for row in results:
+                if isinstance(row, tuple):
+                    device_id, x, y, z, accuracy, source = row
+                else:
+                    device_id = row.get('device_id')
+                    x = row.get('x')
+                    y = row.get('y')
+                    z = row.get('z')
+                    accuracy = row.get('accuracy')
+                    source = row.get('source')
+
+                positions[device_id] = {
+                    'x': float(x),
+                    'y': float(y),
+                    'z': float(z),
+                    'accuracy': float(accuracy) if accuracy else 1.0,
+                    'source': source
+                }
+
+            logger.info(f"Loaded {len(positions)} device positions from database")
+            return positions
+        except Exception as e:
+            logger.error(f"Error loading device positions from database: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {}
