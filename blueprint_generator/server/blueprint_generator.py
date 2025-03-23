@@ -82,26 +82,55 @@ class BlueprintGenerator:
             # Now we should have rooms to generate a blueprint
             logger.info(f"Generating blueprint with {len(rooms)} rooms")
 
+            # Generate walls between rooms
+            walls = self._generate_walls(rooms, device_positions)
+            logger.info(f"Generated {len(walls)} walls between rooms")
+
             # Create the blueprint structure
             blueprint = {
                 'version': '1.0',
                 'generated_at': datetime.now().isoformat(),
                 'rooms': rooms,
+                'walls': walls,  # Add walls to the blueprint
                 'floors': self._group_rooms_into_floors(rooms),
                 'metadata': {
                     'device_count': len(device_positions),
-                    'room_count': len(rooms)
+                    'room_count': len(rooms),
+                    'wall_count': len(walls)
                 }
             }
 
-            # Save blueprint to database
-            self._save_blueprint_to_db(blueprint)
+            # Validate before saving
+            if not self._validate_blueprint(blueprint):
+                logger.warning("Generated blueprint failed validation")
+                # Create a minimal valid blueprint
+                blueprint = self._create_minimal_valid_blueprint(rooms)
+
+            # Save blueprint to database (fixing method name)
+            self._save_blueprint(blueprint)  # Changed from _save_blueprint_to_db
 
             return blueprint
 
         except Exception as e:
             logger.error(f"Error generating blueprint: {e}")
+            import traceback
+            logger.error(traceback.format_exc())  # More detailed error information
             return {}
+
+    def _create_minimal_valid_blueprint(self, rooms):
+        """Create a minimal valid blueprint when validation fails."""
+        # Basic structure with just rooms
+        return {
+            'version': '1.0',
+            'generated_at': datetime.now().isoformat(),
+            'rooms': rooms,
+            'walls': [],
+            'floors': [{'level': 0, 'rooms': [r['id'] for r in rooms]}],
+            'metadata': {
+                'room_count': len(rooms),
+                'is_minimal': True
+            }
+        }
 
     def _generate_walls(self, rooms: List[Dict], positions: Optional[Dict[str, Dict[str, float]]] = None) -> List[Dict]:
         """Generate walls between rooms using AI prediction when available."""
