@@ -291,52 +291,59 @@ class BlueprintGenerator:
         """Get the latest saved blueprint."""
         try:
             logger.info("Getting latest blueprint from database")
-            query = """
-            SELECT data FROM blueprints
-            ORDER BY created_at DESC LIMIT 1
-            """
-            result = execute_query(query)
 
-            if not result:
-                logger.warning("No blueprint found in database")
+            # Get multiple blueprints to ensure we find the latest one
+            query = """
+            SELECT data, created_at, id FROM blueprints
+            ORDER BY created_at DESC, id DESC LIMIT 5
+            """
+            results = execute_query(query)
+
+            if not results:
+                logger.warning("No blueprints found in database")
                 return None
 
-            # Debug the result structure
-            logger.info(f"Blueprint result type: {type(result)}, length: {len(result)}")
+            logger.info(f"Found {len(results)} blueprints in database")
 
-            # Handle different result formats
-            if isinstance(result[0], tuple):
-                blueprint_data = result[0][0]
-            elif isinstance(result[0], dict):
-                blueprint_data = result[0].get('data')
+            # Sort results by created_at to ensure we get the latest
+            latest_blueprint = None
+            latest_created_at = None
+
+            for result in results:
+                # Extract data based on result format
+                if isinstance(result, tuple):
+                    blueprint_data, created_at, blueprint_id = result
+                elif isinstance(result, dict):
+                    blueprint_data = result.get('data')
+                    created_at = result.get('created_at')
+                    blueprint_id = result.get('id')
+                else:
+                    continue
+
+                logger.info(f"Examining blueprint {blueprint_id} from {created_at}")
+
+                # Parse JSON data
+                try:
+                    if isinstance(blueprint_data, str):
+                        blueprint = json.loads(blueprint_data)
+                    else:
+                        blueprint = blueprint_data
+
+                    # Verify this is a valid blueprint with rooms
+                    if 'rooms' in blueprint and isinstance(blueprint['rooms'], list) and len(blueprint['rooms']) > 0:
+                        if latest_created_at is None or (created_at and created_at > latest_created_at):
+                            latest_blueprint = blueprint
+                            latest_created_at = created_at
+                            logger.info(f"Found valid blueprint from {created_at} with {len(blueprint['rooms'])} rooms")
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Error parsing blueprint {blueprint_id}: {e}")
+
+            if latest_blueprint:
+                logger.info(f"Using blueprint from {latest_created_at} with {len(latest_blueprint.get('rooms', []))} rooms")
+                return latest_blueprint
             else:
-                blueprint_data = result[0]
-
-            logger.info(f"Blueprint data type: {type(blueprint_data)}")
-
-            # Parse JSON data
-            if isinstance(blueprint_data, str):
-                blueprint = json.loads(blueprint_data)
-                # Detailed logging of the JSON structure
-                logger.info(f"Blueprint JSON structure - rooms: {len(blueprint.get('rooms', []))}")
-                if blueprint.get('rooms'):
-                    sample_room = blueprint.get('rooms')[0]
-                    logger.info(f"Sample room structure: {json.dumps(sample_room, indent=2)}")
-                logger.info(f"Blueprint JSON structure - walls: {len(blueprint.get('walls', []))}")
-                if blueprint.get('walls'):
-                    sample_wall = blueprint.get('walls')[0]
-                    logger.info(f"Sample wall structure: {json.dumps(sample_wall, indent=2)}")
-            else:
-                blueprint = blueprint_data
-
-            # Verify room data integrity - add this check
-            if 'rooms' in blueprint and isinstance(blueprint['rooms'], list):
-                logger.info(f"Found {len(blueprint['rooms'])} rooms in blueprint, first room: {blueprint['rooms'][0] if blueprint['rooms'] else 'none'}")
-            else:
-                logger.warning(f"Invalid room data in blueprint: {type(blueprint.get('rooms', None))}")
-
-            logger.info(f"Loaded blueprint with {len(blueprint.get('rooms', []))} rooms and {len(blueprint.get('walls', []))} walls")
-            return blueprint
+                logger.warning("No valid blueprints found")
+                return None
         except Exception as e:
             logger.error(f"Failed to get latest blueprint: {str(e)}")
             import traceback
@@ -379,17 +386,21 @@ class BlueprintGenerator:
             # Convert blueprint to JSON string
             blueprint_json = json.dumps(blueprint)
 
-            # Insert into database
+            # Get current timestamp
+            current_time = datetime.now().isoformat()
+
+            # Insert into database with explicit timestamp
             query = """
-            INSERT INTO blueprints (data, status)
-            VALUES (%s, 'active')
+            INSERT INTO blueprints (data, status, created_at)
+            VALUES (%s, 'active', %s)
             """
-            execute_write_query(query, (blueprint_json,))
-            logger.info("Blueprint saved successfully to database")
+            execute_write_query(query, (blueprint_json, current_time))
+            logger.info(f"Blueprint saved successfully to database with timestamp {current_time}")
             return True
 
         except Exception as e:
             logger.error(f"Failed to save blueprint: {str(e)}")
+            return False
 
     def get_device_positions_from_db(self):
         """Get the latest device positions from the database."""
