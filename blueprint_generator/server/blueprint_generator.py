@@ -295,7 +295,7 @@ class BlueprintGenerator:
             SELECT data FROM blueprints
             ORDER BY created_at DESC LIMIT 1
             """
-            result = execute_query(query)  # Use execute_query for SELECT operations
+            result = execute_query(query)
 
             if not result:
                 logger.warning("No blueprint found in database")
@@ -317,8 +317,23 @@ class BlueprintGenerator:
             # Parse JSON data
             if isinstance(blueprint_data, str):
                 blueprint = json.loads(blueprint_data)
+                # Detailed logging of the JSON structure
+                logger.info(f"Blueprint JSON structure - rooms: {len(blueprint.get('rooms', []))}")
+                if blueprint.get('rooms'):
+                    sample_room = blueprint.get('rooms')[0]
+                    logger.info(f"Sample room structure: {json.dumps(sample_room, indent=2)}")
+                logger.info(f"Blueprint JSON structure - walls: {len(blueprint.get('walls', []))}")
+                if blueprint.get('walls'):
+                    sample_wall = blueprint.get('walls')[0]
+                    logger.info(f"Sample wall structure: {json.dumps(sample_wall, indent=2)}")
             else:
                 blueprint = blueprint_data
+
+            # Verify room data integrity - add this check
+            if 'rooms' in blueprint and isinstance(blueprint['rooms'], list):
+                logger.info(f"Found {len(blueprint['rooms'])} rooms in blueprint, first room: {blueprint['rooms'][0] if blueprint['rooms'] else 'none'}")
+            else:
+                logger.warning(f"Invalid room data in blueprint: {type(blueprint.get('rooms', None))}")
 
             logger.info(f"Loaded blueprint with {len(blueprint.get('rooms', []))} rooms and {len(blueprint.get('walls', []))} walls")
             return blueprint

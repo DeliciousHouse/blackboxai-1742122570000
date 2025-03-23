@@ -1,5 +1,6 @@
 import json
 import logging
+import requests
 from typing import Dict, Optional
 
 from flask import Flask, jsonify, request, send_from_directory, render_template
@@ -571,4 +572,26 @@ def debug_entities():
 
     except Exception as e:
         logger.error(f"Debug endpoint failed: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/blueprint', methods=['GET'])
+def debug_blueprint():
+    """Debug endpoint to view raw blueprint data."""
+    try:
+        blueprint = blueprint_generator.get_latest_blueprint()
+
+        if not blueprint:
+            return jsonify({"error": "No blueprint found"}), 404
+
+        # Return the raw blueprint data as JSON for inspection
+        return jsonify({
+            "blueprint": blueprint,
+            "meta": {
+                "rooms": len(blueprint.get('rooms', [])),
+                "walls": len(blueprint.get('walls', [])),
+                "floors": len(blueprint.get('floors', []))
+            }
+        })
+    except Exception as e:
+        logger.error(f"Debug blueprint error: {str(e)}")
         return jsonify({"error": str(e)}), 500
