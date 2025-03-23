@@ -336,7 +336,7 @@ class BlueprintGenerator:
         try:
             logger.info("Loading device positions from database")
             query = """
-            SELECT device_id, position_data, source, accuracy, timestamp
+            SELECT device_id, position_data, source, timestamp
             FROM device_positions
             WHERE timestamp = (SELECT MAX(timestamp) FROM device_positions)
             """
@@ -345,12 +345,11 @@ class BlueprintGenerator:
             positions = {}
             for row in results:
                 if isinstance(row, tuple):
-                    device_id, position_data, source, accuracy, timestamp = row
+                    device_id, position_data, source, timestamp = row
                 else:
                     device_id = row.get('device_id')
                     position_data = row.get('position_data')
                     source = row.get('source')
-                    accuracy = row.get('accuracy')
                     timestamp = row.get('timestamp')
 
                 # Parse position data from JSON
@@ -366,7 +365,7 @@ class BlueprintGenerator:
                             'x': float(position['x']),
                             'y': float(position['y']),
                             'z': float(position['z']),
-                            'accuracy': float(accuracy if accuracy else position.get('accuracy', 1.0)),
+                            'accuracy': float(position.get('accuracy', 1.0)),  # Get accuracy from the position JSON
                             'source': source or position.get('source', 'unknown')
                         }
                 except (json.JSONDecodeError, TypeError) as e:
