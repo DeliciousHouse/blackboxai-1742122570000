@@ -204,7 +204,7 @@ class BlueprintGenerator:
 
         return walls
 
-    def eee_validate_blueprint(self, blueprint: Dict) -> bool:
+    def _validate_blueprint(self, blueprint: Dict) -> bool:
         """Validate generated blueprint."""
         try:
             # Log the validation criteria
