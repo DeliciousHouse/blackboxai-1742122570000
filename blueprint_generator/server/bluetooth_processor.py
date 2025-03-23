@@ -9,6 +9,7 @@ import os
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.cluster import DBSCAN
+import uuid
 
 from .db import get_sensor_readings, save_sensor_reading
 from .ai_processor import AIProcessor
@@ -513,7 +514,11 @@ class BluetoothProcessor:
             max_coords = np.max(room_positions, axis=0)
             center = np.mean(room_positions, axis=0)
 
+            # Generate a unique ID for each room
+            room_id = f"room_{uuid.uuid4().hex[:8]}"  # Unique ID
+
             rooms.append({
+                'id': room_id,  # Add the ID here
                 'center': {
                     'x': float(center[0]),
                     'y': float(center[1]),
