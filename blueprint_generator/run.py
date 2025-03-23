@@ -80,7 +80,10 @@ def start_processing_scheduler():
                 if result:
                     logger.info("Generating blueprint from processed data")
                     # FIXED: Remove the incorrect parameters - generate_blueprint doesn't accept positions/rooms directly
-                    blueprint = blueprint_generator.generate_blueprint()
+                    blueprint = blueprint_generator.generate_blueprint(
+                        result.get('device_positions', {}),
+                        result.get('room_list', [])
+                    )
                     logger.info(f"Blueprint generated with {len(blueprint.get('rooms', []))} rooms")
 
             except Exception as e:

@@ -54,15 +54,23 @@ class BlueprintGenerator:
     def generate_blueprint(self, device_positions=None, rooms=None):
         """Generate a 3D blueprint based on device positions and detected rooms."""
         try:
-            # If no positions are provided, load from database
-            if device_positions is None:
-                device_positions = self.get_device_positions_from_db()
+            # Debug info - print what's being passed in
+            logger.info(f"Generate blueprint called with: {len(device_positions) if device_positions else 0} positions, {len(rooms) if rooms else 0} rooms")
 
-            # If no rooms are provided, try to detect them
-            if rooms is None:
-                bluetooth_processor = BluetoothProcessor()
-                rooms = bluetooth_processor.detect_rooms(device_positions)
+            # Skip database loading if we already have data
+            if device_positions and rooms:
+                logger.info("Using provided positions and rooms, skipping database loading")
+            else:
+                # If no positions are provided, load from database
+                if not device_positions:
+                    device_positions = self.get_device_positions_from_db()
 
+                # If no rooms are provided, try to detect them
+                if not rooms and device_positions:
+                    bluetooth_processor = BluetoothProcessor()
+                    rooms = bluetooth_processor.detect_rooms(device_positions)
+
+            # Now proceed with blueprint generation
             if not rooms:  # If still no rooms, check if we have positions to work with
                 if not device_positions:
                     logger.warning("No valid positions found for blueprint generation")
@@ -71,7 +79,7 @@ class BlueprintGenerator:
                 # Debug what positions we have
                 logger.info(f"Have {len(device_positions)} positions but no rooms. Position keys: {list(device_positions.keys())}")
 
-                # Try to create rooms from positions directly
+                # Try one more time to create rooms from positions directly
                 bluetooth_processor = BluetoothProcessor()
                 rooms = bluetooth_processor.detect_rooms(device_positions)
 
