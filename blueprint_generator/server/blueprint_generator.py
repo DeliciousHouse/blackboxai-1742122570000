@@ -24,6 +24,7 @@ class BlueprintGenerator:
         self.validation = self.config['blueprint_validation']
         self.status = {"state": "idle", "progress": 0}
         self.latest_job_id = None
+        self.latest_generated_blueprint = None  # In-memory blueprint storage
 
         # Initialize AI database tables if needed
         self.ai_processor._create_tables()
@@ -113,6 +114,9 @@ class BlueprintGenerator:
                 logger.warning("Generated blueprint failed validation")
                 # Create a minimal valid blueprint
                 blueprint = self._create_minimal_valid_blueprint(rooms)
+
+            # Store in memory before trying database
+            self.latest_generated_blueprint = blueprint
 
             # Save blueprint to database (fixing method name)
             self._save_blueprint(blueprint)  # Changed from _save_blueprint_to_db
@@ -288,9 +292,15 @@ class BlueprintGenerator:
             return False
 
     def get_latest_blueprint(self) -> Optional[Dict]:
-        """Get the latest saved blueprint."""
+        """Get the latest saved blueprint, with fallback to in-memory."""
+        # First check our in-memory blueprint
+        if hasattr(self, 'latest_generated_blueprint') and self.latest_generated_blueprint:
+            logger.info(f"Using in-memory blueprint with {len(self.latest_generated_blueprint.get('rooms', []))} rooms")
+            return self.latest_generated_blueprint
+
+        # Otherwise try database (existing code)
         try:
-            logger.info("Getting latest blueprint from database")
+            logger.info("No in-memory blueprint, checking database")
 
             # Get multiple blueprints to ensure we find the latest one
             query = """
