@@ -16,8 +16,22 @@ logger = logging.getLogger(__name__)
 class BlueprintGenerator:
     """Generate 3D blueprints from room detection data."""
 
+    # Class variable to hold the single instance
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        """Create or return the singleton instance."""
+        if cls._instance is None:
+            cls._instance = super(BlueprintGenerator, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self, config_path: Optional[str] = None):
-        """Initialize the blueprint generator."""
+        """Initialize only once."""
+        if getattr(self, '_initialized', False):
+            return
+
+        # Your existing initialization code
         self.bluetooth_processor = BluetoothProcessor(config_path)
         self.ai_processor = AIProcessor(config_path)
         self.config = self._load_config(config_path)
@@ -28,6 +42,8 @@ class BlueprintGenerator:
 
         # Initialize AI database tables if needed
         self.ai_processor._create_tables()
+
+        self._initialized = True
 
     def _load_config(self, config_path: Optional[str] = None) -> Dict:
         """Load configuration from file or use defaults."""
@@ -144,6 +160,7 @@ class BlueprintGenerator:
 
         except Exception as e:
             logger.error(f"Error generating blueprint: {e}")
+            logger.info(f"Stored in memory: {self.latest_generated_blueprint is not None}, with {len(self.latest_generated_blueprint.get('rooms', []))} rooms")
             import traceback
             logger.error(traceback.format_exc())  # More detailed error information
             return {}
