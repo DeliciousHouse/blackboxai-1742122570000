@@ -578,10 +578,19 @@ def debug_entities():
 def debug_blueprint():
     """Debug endpoint to view raw blueprint data."""
     try:
+        # IMPORTANT: Use the instance method, not the imported function
         blueprint = blueprint_generator.get_latest_blueprint()
 
         if not blueprint:
-            return jsonify({"error": "No blueprint found"}), 404
+            # Check both sources if not found
+            logger.warning("No blueprint in blueprints table, checking manual_updates")
+            from .db import get_latest_blueprint as db_get_latest
+            blueprint = db_get_latest()
+
+            if not blueprint:
+                return jsonify({"error": "No blueprint found in any table"}), 404
+            else:
+                logger.info("Found blueprint in manual_updates table instead")
 
         # Return the raw blueprint data as JSON for inspection
         return jsonify({
@@ -590,7 +599,8 @@ def debug_blueprint():
                 "rooms": len(blueprint.get('rooms', [])),
                 "walls": len(blueprint.get('walls', [])),
                 "floors": len(blueprint.get('floors', []))
-            }
+            },
+            "source": "Instance method" if hasattr(blueprint, 'rooms') and len(blueprint.get('rooms', [])) > 1 else "DB function"
         })
     except Exception as e:
         logger.error(f"Debug blueprint error: {str(e)}")
