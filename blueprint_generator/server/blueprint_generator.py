@@ -117,6 +117,25 @@ class BlueprintGenerator:
             # Save blueprint to database (fixing method name)
             self._save_blueprint(blueprint)  # Changed from _save_blueprint_to_db
 
+            logger.info(f"Final blueprint has {len(blueprint.get('rooms', []))} rooms and {len(blueprint.get('walls', []))} walls")
+
+            # If blueprint is somehow empty but we have rooms, create a minimal blueprint
+            if not blueprint.get('rooms') and rooms:
+                logger.warning("Blueprint is empty but we have rooms - creating minimal blueprint")
+                minimal_blueprint = {
+                    'version': '1.0',
+                    'generated_at': datetime.now().isoformat(),
+                    'rooms': rooms,
+                    'walls': [],
+                    'floors': [{'level': 0, 'rooms': [r.get('id', f'room_{i}') for i, r in enumerate(rooms)]}],
+                    'metadata': {
+                        'device_count': len(device_positions),
+                        'room_count': len(rooms),
+                        'is_minimal': True
+                    }
+                }
+                return minimal_blueprint
+
             return blueprint
 
         except Exception as e:
@@ -386,3 +405,31 @@ class BlueprintGenerator:
             import traceback
             logger.error(traceback.format_exc())
             return {}
+
+    def _group_rooms_into_floors(self, rooms: List[Dict]) -> List[Dict]:
+        """Group rooms into floors based on their z-coordinate."""
+        if not rooms:
+            return []
+
+        # Group rooms by their z-coordinate (floor level)
+        floors_dict = {}
+        for room in rooms:
+            # Use the minimum z-coordinate as the floor level
+            floor_level = int(room['bounds']['min']['z'])
+
+            if floor_level not in floors_dict:
+                floors_dict[floor_level] = []
+
+            floors_dict[floor_level].append(room['id'])
+
+        # Convert to list of floor objects
+        floors = []
+        for level, room_ids in sorted(floors_dict.items()):
+            floors.append({
+                'level': level,
+                'rooms': room_ids,
+                'height': 3.0  # Default floor height
+            })
+
+        logger.info(f"Grouped {len(rooms)} rooms into {len(floors)} floors")
+        return floors
