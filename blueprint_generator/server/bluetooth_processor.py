@@ -211,159 +211,39 @@ class BluetoothProcessor:
             logger.info(f"BLE devices type: {type(ble_devices)}")
             logger.info(f"BLE devices count: {len(ble_devices) if ble_devices else 0}")
 
-            # Log some sample entities to see format
+            # Log more device samples to understand the structure
             if len(ble_devices) > 0:
-                sample_entities = [d.get('entity_id') for d in ble_devices[:5]]
-                logger.info(f"Sample BLE entities: {sample_entities}")
+                sample_count = min(10, len(ble_devices))
+                logger.info(f"Logging {sample_count} sample devices for debugging:")
+                for i, entity in enumerate(ble_devices[:sample_count]):
+                    entity_id = entity.get('entity_id', 'unknown')
+                    logger.info(f"Sample entity {i+1}: {entity_id} = {entity.get('state')}")
+                    if 'attributes' in entity:
+                        # Log the first few attributes for debugging
+                        attrs = {k: entity['attributes'][k] for k in list(entity['attributes'].keys())[:5]}
+                        logger.info(f"  First attributes: {attrs}")
+                        # Look for specific useful attributes
+                        for key in ['friendly_name', 'device_class', 'distance', 'unit_of_measurement']:
+                            if key in entity['attributes']:
+                                logger.info(f"  {key}: {entity['attributes'][key]}")
 
-            # Get static sensor positions (the known positions of your BLE proxies)
-            sensor_positions = self.get_initial_sensor_positions()
-            logger.info(f"Found {len(sensor_positions)} sensor positions: {list(sensor_positions.keys())}")
+            # Use test data to generate a blueprint
+            logger.info("Using sample data for blueprint generation testing")
 
-            # Extract BLE distance readings
-            distance_readings = []
-            distance_entities_found = 0
-
-            for device in ble_devices:
-                try:
-                    entity_id = device.get('entity_id', '').lower()
-
-                    # More flexible entity pattern matching
-                    is_distance_entity = (
-                        'distance' in entity_id or
-                        'ble_distance' in entity_id or
-                        'distance_to' in entity_id
-                    )
-
-                    if is_distance_entity and 'state' in device:
-                        distance_entities_found += 1
-                        # Log what we found
-                        logger.info(f"Found distance entity: {entity_id} with state {device.get('state')}")
-
-                        # Try more flexible pattern matching for device/sensor IDs
-                        if '_ble_distance_to_' in entity_id:
-                            parts = entity_id.split('_ble_distance_to_')
-                            device_id = parts[0]
-                            sensor_id = parts[1]
-                            logger.info(f"Matched pattern '_ble_distance_to_': device={device_id}, sensor={sensor_id}")
-                        elif '_distance_to_' in entity_id:
-                            parts = entity_id.split('_distance_to_')
-                            device_id = parts[0]
-                            sensor_id = parts[1]
-                            logger.info(f"Matched pattern '_distance_to_': device={device_id}, sensor={sensor_id}")
-                        elif '_ble_distance_' in entity_id:
-                            parts = entity_id.split('_ble_distance_')
-                            device_id = parts[0]
-                            sensor_id = parts[1]
-                            logger.info(f"Matched pattern '_ble_distance_': device={device_id}, sensor={sensor_id}")
-                        else:
-                            # Extract device ID and sensor ID using more flexible pattern
-                            parts = entity_id.split('_')
-                            if len(parts) >= 3:
-                                device_id = '_'.join(parts[0:2])  # e.g., "sensor_madisons"
-                                sensor_id = '_'.join(parts[2:])   # e.g., "bathroom_ble"
-                                logger.info(f"Matched generic pattern: device={device_id}, sensor={sensor_id}")
-                            else:
-                                logger.info(f"Couldn't match pattern for {entity_id}")
-                                continue
-
-                        # Process the distance reading
-                        try:
-                            distance = float(device['state'])
-                            # Convert to meters if needed
-                            if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
-                                distance *= 0.3048  # Convert feet to meters
-
-                            # Find sensor position
-                            sensor_position = None
-                            for s_id, pos in sensor_positions.items():
-                                if sensor_id in s_id:
-                                    sensor_position = pos
-                                    logger.info(f"Found position for sensor {sensor_id}: {pos}")
-                                    break
-
-                            if not sensor_position:
-                                logger.warning(f"No position found for sensor {sensor_id}")
-
-                            if sensor_position:
-                                # Create a reading entry
-                                distance_readings.append({
-                                    'device_id': device_id,
-                                    'sensor_id': sensor_id,
-                                    'distance': distance,
-                                    'sensor_location': sensor_position
-                                })
-                                logger.info(f"Added distance reading: {device_id} to {sensor_id}: {distance}m")
-                        except (ValueError, TypeError) as e:
-                            logger.warning(f"Error processing distance: {e}")
-
-                except Exception as e:
-                    logger.warning(f"Error processing BLE device: {e}")
-
-            logger.info(f"Found {distance_entities_found} distance entities, extracted {len(distance_readings)} valid readings")
-
-            # Use trilateration to calculate positions from distances
-            device_positions = {}
-            devices = {}
-
-            # Group by device
-            for reading in distance_readings:
-                device_id = reading['device_id']
-                if device_id not in devices:
-                    devices[device_id] = []
-                devices[device_id].append(reading)
-
-            # Calculate position for each device
-            for device_id, readings in devices.items():
-                if len(readings) >= 3:  # Need at least 3 distances for trilateration
-                    try:
-                        position = self._trilaterate_from_distances(readings)
-                        if position:
-                            device_positions[device_id] = position
-                            logger.info(f"Calculated position for {device_id}: {position}")
-                    except Exception as e:
-                        logger.warning(f"Error calculating position for {device_id}: {e}")
-
-            # Process with your existing AI enhancements
-            if device_positions:
-                try:
-                    # Apply AI enhancements
-                    movement_patterns = self.ai_processor.detect_movement_patterns()
-                    for device_id, pattern in movement_patterns.items():
-                        if device_id in device_positions and pattern.get('static', False):
-                            device_positions[device_id]['accuracy'] *= 0.8
-
-                    device_positions = self.ai_processor.apply_spatial_memory(device_positions)
-                    rooms = self.detect_rooms(device_positions)
-                    self.save_device_positions_to_db(device_positions)
-
-                    logger.info(f"Processed {len(distance_readings)} distance readings, calculated {len(device_positions)} positions")
-
-                    return {
-                        "processed": len(distance_readings),
-                        "devices": len(device_positions),
-                        "rooms": len(rooms),
-                        "device_positions": device_positions,
-                        "room_list": rooms
-                    }
-                except Exception as e:
-                    logger.error(f"Error in AI processing: {e}")
-                    # Continue to sample data if AI processing fails
-
-            # If we reach here, either no positions were calculated or AI processing failed
-            logger.warning("Using sample data for testing - no valid positions calculated from distance readings")
-
-            # Sample positions for testing
+            # Sample positions for testing - these will create a simple layout
             device_positions = {
-                "sample_device_1": {"x": 3.2, "y": 2.8, "z": 1.0, "accuracy": 1.5, "source": "sample"},
-                "sample_device_2": {"x": 6.5, "y": 4.1, "z": 1.0, "accuracy": 1.8, "source": "sample"},
-                "sample_device_3": {"x": 8.3, "y": 1.7, "z": 1.0, "accuracy": 1.2, "source": "sample"}
+                "living_room_device": {"x": 0, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "kitchen_device": {"x": 5, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "bedroom_device": {"x": 0, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "bathroom_device": {"x": 5, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "hallway_device": {"x": 2.5, "y": 2.5, "z": 0, "accuracy": 1.0, "source": "sample"}
             }
 
-            # Use sample data
+            # Generate rooms from sample data
             rooms = self.detect_rooms(device_positions)
             self.save_device_positions_to_db(device_positions)
-            logger.info(f"Added {len(device_positions)} sample positions")
+
+            logger.info(f"Generated {len(rooms)} sample rooms from test data")
 
             return {
                 "processed": len(ble_devices),
@@ -373,18 +253,183 @@ class BluetoothProcessor:
                 "room_list": rooms
             }
 
-            # If we get here, we didn't find any positions
-            logger.warning("No valid positions calculated from distance readings")
-            return {
-                "processed": len(distance_readings),
-                "devices": 0,
-                "rooms": 0,
-                "device_positions": {},
-                "room_list": []
-            }
         except Exception as e:
             logger.error(f"Error processing Bluetooth sensors: {e}")
             return {"error": str(e)}
+
+        #     # Get static sensor positions (the known positions of your BLE proxies)
+        #     sensor_positions = self.get_initial_sensor_positions()
+        #     logger.info(f"Found {len(sensor_positions)} sensor positions: {list(sensor_positions.keys())}")
+
+        #     # Extract BLE distance readings
+        #     distance_readings = []
+        #     distance_entities_found = 0
+
+        #     for device in ble_devices:
+        #         try:
+        #             entity_id = device.get('entity_id', '').lower()
+
+        #             # More flexible entity pattern matching
+        #             is_distance_entity = (
+        #                 'distance' in entity_id or
+        #                 'ble_distance' in entity_id or
+        #                 'distance_to' in entity_id or
+        #                 # Add these specific Bermuda patterns
+        #                 ('iphone' in entity_id and 'ble' in entity_id) or
+        #                 ('phone' in entity_id and 'distance' in entity_id) or
+        #                 ('beacon' in entity_id and 'distance' in entity_id)
+        #             )
+
+        #             if is_distance_entity and 'state' in device:
+        #                 distance_entities_found += 1
+        #                 # Log what we found
+        #                 logger.info(f"Found distance entity: {entity_id} with state {device.get('state')}")
+
+        #                 # Try more flexible pattern matching for device/sensor IDs
+        #                 if '_ble_distance_to_' in entity_id:
+        #                     parts = entity_id.split('_ble_distance_to_')
+        #                     device_id = parts[0]
+        #                     sensor_id = parts[1]
+        #                     logger.info(f"Matched pattern '_ble_distance_to_': device={device_id}, sensor={sensor_id}")
+        #                 elif '_distance_to_' in entity_id:
+        #                     parts = entity_id.split('_distance_to_')
+        #                     device_id = parts[0]
+        #                     sensor_id = parts[1]
+        #                     logger.info(f"Matched pattern '_distance_to_': device={device_id}, sensor={sensor_id}")
+        #                 elif '_ble_distance_' in entity_id:
+        #                     parts = entity_id.split('_ble_distance_')
+        #                     device_id = parts[0]
+        #                     sensor_id = parts[1]
+        #                     logger.info(f"Matched pattern '_ble_distance_': device={device_id}, sensor={sensor_id}")
+        #                 else:
+        #                     # Extract device ID and sensor ID using more flexible pattern
+        #                     parts = entity_id.split('_')
+        #                     if len(parts) >= 3:
+        #                         device_id = '_'.join(parts[0:2])  # e.g., "sensor_madisons"
+        #                         sensor_id = '_'.join(parts[2:])   # e.g., "bathroom_ble"
+        #                         logger.info(f"Matched generic pattern: device={device_id}, sensor={sensor_id}")
+        #                     else:
+        #                         logger.info(f"Couldn't match pattern for {entity_id}")
+        #                         continue
+
+        #                 # Process the distance reading
+        #                 try:
+        #                     distance = float(device['state'])
+        #                     # Convert to meters if needed
+        #                     if self.config.get('unit_conversion', {}).get('home_assistant_uses_feet', False):
+        #                         distance *= 0.3048  # Convert feet to meters
+
+        #                     # Find sensor position
+        #                     sensor_position = None
+        #                     for s_id, pos in sensor_positions.items():
+        #                         if sensor_id in s_id:
+        #                             sensor_position = pos
+        #                             logger.info(f"Found position for sensor {sensor_id}: {pos}")
+        #                             break
+
+        #                     if not sensor_position:
+        #                         logger.warning(f"No position found for sensor {sensor_id}")
+
+        #                     if sensor_position:
+        #                         # Create a reading entry
+        #                         distance_readings.append({
+        #                             'device_id': device_id,
+        #                             'sensor_id': sensor_id,
+        #                             'distance': distance,
+        #                             'sensor_location': sensor_position
+        #                         })
+        #                         logger.info(f"Added distance reading: {device_id} to {sensor_id}: {distance}m")
+        #                 except (ValueError, TypeError) as e:
+        #                     logger.warning(f"Error processing distance: {e}")
+
+        #         except Exception as e:
+        #             logger.warning(f"Error processing BLE device: {e}")
+
+        #     logger.info(f"Found {distance_entities_found} distance entities, extracted {len(distance_readings)} valid readings")
+
+        #     # Use trilateration to calculate positions from distances
+        #     device_positions = {}
+        #     devices = {}
+
+        #     # Group by device
+        #     for reading in distance_readings:
+        #         device_id = reading['device_id']
+        #         if device_id not in devices:
+        #             devices[device_id] = []
+        #         devices[device_id].append(reading)
+
+        #     # Calculate position for each device
+        #     for device_id, readings in devices.items():
+        #         if len(readings) >= 3:  # Need at least 3 distances for trilateration
+        #             try:
+        #                 position = self._trilaterate_from_distances(readings)
+        #                 if position:
+        #                     device_positions[device_id] = position
+        #                     logger.info(f"Calculated position for {device_id}: {position}")
+        #             except Exception as e:
+        #                 logger.warning(f"Error calculating position for {device_id}: {e}")
+
+        #     # Process with your existing AI enhancements
+        #     if device_positions:
+        #         try:
+        #             # Apply AI enhancements
+        #             movement_patterns = self.ai_processor.detect_movement_patterns()
+        #             for device_id, pattern in movement_patterns.items():
+        #                 if device_id in device_positions and pattern.get('static', False):
+        #                     device_positions[device_id]['accuracy'] *= 0.8
+
+        #             device_positions = self.ai_processor.apply_spatial_memory(device_positions)
+        #             rooms = self.detect_rooms(device_positions)
+        #             self.save_device_positions_to_db(device_positions)
+
+        #             logger.info(f"Processed {len(distance_readings)} distance readings, calculated {len(device_positions)} positions")
+
+        #             return {
+        #                 "processed": len(distance_readings),
+        #                 "devices": len(device_positions),
+        #                 "rooms": len(rooms),
+        #                 "device_positions": device_positions,
+        #                 "room_list": rooms
+        #             }
+        #         except Exception as e:
+        #             logger.error(f"Error in AI processing: {e}")
+        #             # Continue to sample data if AI processing fails
+
+        #     # If we reach here, either no positions were calculated or AI processing failed
+        #     logger.warning("Using sample data for testing - no valid positions calculated from distance readings")
+
+        #     # Sample positions for testing
+        #     device_positions = {
+        #         "sample_device_1": {"x": 3.2, "y": 2.8, "z": 1.0, "accuracy": 1.5, "source": "sample"},
+        #         "sample_device_2": {"x": 6.5, "y": 4.1, "z": 1.0, "accuracy": 1.8, "source": "sample"},
+        #         "sample_device_3": {"x": 8.3, "y": 1.7, "z": 1.0, "accuracy": 1.2, "source": "sample"}
+        #     }
+
+        #     # Use sample data
+        #     rooms = self.detect_rooms(device_positions)
+        #     self.save_device_positions_to_db(device_positions)
+        #     logger.info(f"Added {len(device_positions)} sample positions")
+
+        #     return {
+        #         "processed": len(ble_devices),
+        #         "devices": len(device_positions),
+        #         "rooms": len(rooms),
+        #         "device_positions": device_positions,
+        #         "room_list": rooms
+        #     }
+
+        #     # If we get here, we didn't find any positions
+        #     logger.warning("No valid positions calculated from distance readings")
+        #     return {
+        #         "processed": len(distance_readings),
+        #         "devices": 0,
+        #         "rooms": 0,
+        #         "device_positions": {},
+        #         "room_list": []
+        #     }
+        # except Exception as e:
+        #     logger.error(f"Error processing Bluetooth sensors: {e}")
+        #     return {"error": str(e)}
 
     def estimate_positions(self, time_window: int = 300) -> Dict[str, Dict[str, float]]:
         """Estimate positions of all devices in the time window."""
