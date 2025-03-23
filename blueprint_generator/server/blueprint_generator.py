@@ -252,6 +252,85 @@ class BlueprintGenerator:
 
         return walls
 
+    def _generate_walls_between_rooms(self, rooms):
+        """Generate walls between rooms using more realistic algorithms."""
+        walls = []
+
+        try:
+            # First identify rooms on the same floor
+            rooms_by_floor = {}
+            for room in rooms:
+                floor = int(room['center']['z'] // 3)  # Assuming 3m floor height
+                if floor not in rooms_by_floor:
+                    rooms_by_floor[floor] = []
+                rooms_by_floor[floor].append(room)
+
+            # For each floor, generate walls between adjacent rooms
+            for floor, floor_rooms in rooms_by_floor.items():
+                logger.info(f"Generating walls for floor {floor} with {len(floor_rooms)} rooms")  # Add this line
+                if len(floor_rooms) <= 1:
+                    continue
+
+                # Use Delaunay triangulation to find potential adjacent rooms
+                from scipy.spatial import Delaunay
+                import numpy as np
+
+                # Extract room centers
+                centers = []
+                for room in floor_rooms:
+                    centers.append([room['center']['x'], room['center']['y']])
+
+                # Handle case with too few rooms
+                if len(centers) < 3:
+                    # Just connect them with a wall
+                    if len(centers) == 2:
+                        r1, r2 = floor_rooms[0], floor_rooms[1]
+                        wall_height = min(r1['dimensions']['height'], r2['dimensions']['height'])
+                        walls.append({
+                            'start': {'x': r1['center']['x'], 'y': r1['center']['y']},
+                            'end': {'x': r2['center']['x'], 'y': r2['center']['y']},
+                            'height': wall_height,
+                            'thickness': 0.2
+                        })
+                    continue
+
+                # Create Delaunay triangulation
+                tri = Delaunay(np.array(centers))
+
+                # Generate walls from triangulation edges
+                edges = set()
+                for simplex in tri.simplices:
+                    for i in range(3):
+                        edge = tuple(sorted([simplex[i], simplex[(i+1)%3]]))
+                        edges.add(edge)
+
+                # Create walls from edges
+                for i, j in edges:
+                    r1, r2 = floor_rooms[i], floor_rooms[j]
+
+                    # Check if rooms are too far apart
+                    dx = r1['center']['x'] - r2['center']['x']
+                    dy = r1['center']['y'] - r2['center']['y']
+                    distance = (dx**2 + dy**2)**0.5
+
+                    # Skip if too far apart
+                    if distance > 10:  # Adjust threshold as needed
+                        continue
+
+                    # Create wall
+                    wall_height = min(r1['dimensions']['height'], r2['dimensions']['height'])
+                    walls.append({
+                        'start': {'x': r1['center']['x'], 'y': r1['center']['y']},
+                        'end': {'x': r2['center']['x'], 'y': r2['center']['y']},
+                        'height': wall_height,
+                        'thickness': 0.2
+                    })
+        except Exception as e:
+            logger.error(f"Wall generation failed: {str(e)}")
+
+        logger.info(f"Generated {len(walls)} walls between rooms")
+        return walls
+
     def _validate_blueprint(self, blueprint: Dict) -> bool:
         """Validate generated blueprint."""
         try:

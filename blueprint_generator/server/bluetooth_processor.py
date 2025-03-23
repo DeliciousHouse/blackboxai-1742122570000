@@ -525,9 +525,9 @@ class BluetoothProcessor:
                     'z': float(center[2])
                 },
                 'dimensions': {
-                    'width': float(max_coords[0] - min_coords[0]),
-                    'length': float(max_coords[1] - min_coords[1]),
-                    'height': float(max_coords[2] - min_coords[2])
+                    'width': max(4.0, float(max_coords[0] - min_coords[0])),  # Min width of 2m
+                    'length': max(4.0, float(max_coords[1] - min_coords[1])),  # Min length of 3m
+                    'height': max(3, float(max_coords[2] - min_coords[2]))   # Min height of 2.4m
                 },
                 'bounds': {
                     'min': {
