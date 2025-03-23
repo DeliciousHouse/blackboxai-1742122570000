@@ -94,7 +94,7 @@ function createWall(wall) {
         wireframe: wireframeMode
     });
     const mesh = new THREE.Mesh(geometry, material);
-    
+
     // Position and rotate wall
     const midpoint = {
         x: (wall.start.x + wall.end.x) / 2,
@@ -103,7 +103,7 @@ function createWall(wall) {
     };
     mesh.position.set(midpoint.x, midpoint.y, midpoint.z);
     mesh.rotation.y = wall.angle;
-    
+
     return mesh;
 }
 
@@ -141,9 +141,9 @@ async function generateBlueprint() {
                 time_window: parseInt(document.getElementById('updateInterval').value) * 60
             })
         });
-        
+
         if (!response.ok) throw new Error('Failed to generate blueprint');
-        
+
         const blueprint = await response.json();
         updateScene(blueprint);
         updateStatus('Blueprint generated successfully', 'success');
@@ -174,15 +174,32 @@ async function saveBlueprint() {
                 }))
             })
         });
-        
+
         if (!response.ok) throw new Error('Failed to save blueprint');
-        
+
         updateStatus('Blueprint saved successfully', 'success');
     } catch (error) {
         console.error('Error saving blueprint:', error);
         updateStatus('Failed to save blueprint', 'error');
     }
 }
+
+// Check this in your frontend JavaScript file
+fetch('/api/blueprint')
+  .then(response => {
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
+    }
+    return response.json();
+  })
+  .then(blueprint => {
+    console.log('Loaded blueprint with', blueprint.rooms.length, 'rooms');
+    renderBlueprint(blueprint);
+  })
+  .catch(error => {
+    console.error('Error loading blueprint:', error);
+    displayErrorMessage('Failed to load blueprint data');
+  });
 
 // UI update functions
 function updateStatus(message, type = 'info') {
@@ -192,7 +209,7 @@ function updateStatus(message, type = 'info') {
 }
 
 function updateLastUpdate() {
-    document.getElementById('lastUpdate').textContent = 
+    document.getElementById('lastUpdate').textContent =
         `Last update: ${new Date().toLocaleTimeString()}`;
 }
 

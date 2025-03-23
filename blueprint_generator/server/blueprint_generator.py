@@ -290,24 +290,42 @@ class BlueprintGenerator:
     def get_latest_blueprint(self) -> Optional[Dict]:
         """Get the latest saved blueprint."""
         try:
+            logger.info("Getting latest blueprint from database")
             query = """
             SELECT data FROM blueprints
             ORDER BY created_at DESC LIMIT 1
             """
-            result = execute_query(query)
+            result = execute_query(query)  # Use execute_query for SELECT operations
 
             if not result:
+                logger.warning("No blueprint found in database")
                 return None
 
-            blueprint_data = result[0][0] if isinstance(result[0], tuple) else result[0].get('data')
+            # Debug the result structure
+            logger.info(f"Blueprint result type: {type(result)}, length: {len(result)}")
 
-            # If data is stored as a string, parse it
+            # Handle different result formats
+            if isinstance(result[0], tuple):
+                blueprint_data = result[0][0]
+            elif isinstance(result[0], dict):
+                blueprint_data = result[0].get('data')
+            else:
+                blueprint_data = result[0]
+
+            logger.info(f"Blueprint data type: {type(blueprint_data)}")
+
+            # Parse JSON data
             if isinstance(blueprint_data, str):
-                return json.loads(blueprint_data)
-            return blueprint_data
+                blueprint = json.loads(blueprint_data)
+            else:
+                blueprint = blueprint_data
 
+            logger.info(f"Loaded blueprint with {len(blueprint.get('rooms', []))} rooms and {len(blueprint.get('walls', []))} walls")
+            return blueprint
         except Exception as e:
             logger.error(f"Failed to get latest blueprint: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
     def update_blueprint(self, blueprint_data: Dict) -> bool:

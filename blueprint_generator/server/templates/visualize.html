@@ -3,8 +3,9 @@
 <head>
     <title>Blueprint Viewer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; }
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         canvas { display: block; }
         #error-message {
             position: absolute;
@@ -16,11 +17,25 @@
             border-radius: 5px;
             display: none;
         }
+        #info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
     <div id="blueprint-container"></div>
     <div id="error-message"></div>
+    <div id="info-panel">
+        <h3>Blueprint Info</h3>
+        <div id="blueprint-stats"></div>
+    </div>
+
     <script>
         // Blueprint data from server
         let blueprintData;
@@ -28,6 +43,14 @@
         try {
             blueprintData = JSON.parse('{{ blueprint|tojson|safe }}');
             console.log("Loaded blueprint data:", blueprintData);
+
+            // Update info panel
+            const statsDiv = document.getElementById('blueprint-stats');
+            statsDiv.innerHTML = `
+                <p>Rooms: ${blueprintData.rooms.length}</p>
+                <p>Walls: ${blueprintData.walls ? blueprintData.walls.length : 0}</p>
+                <p>Floors: ${blueprintData.floors ? blueprintData.floors.length : 0}</p>
+            `;
         } catch (e) {
             showError("Failed to parse blueprint data: " + e.message);
         }
@@ -38,47 +61,105 @@
 
         // Camera
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 10, 10);
+        camera.position.set(10, 10, 10);
         camera.lookAt(0, 0, 0);
 
         // Renderer
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.getElementById('blueprint-container').appendChild(renderer.domElement);
 
+        // Controls for camera
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+
         // Lighting
-        const light = new THREE.AmbientLight(0x404040);
+        const light = new THREE.AmbientLight(0x404040, 1.5);
         scene.add(light);
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
         scene.add(directionalLight);
 
         // Grid helper
         const gridHelper = new THREE.GridHelper(20, 20);
         scene.add(gridHelper);
 
+        // Helper function to get random color for rooms
+        function getRandomColor() {
+            const colors = [0x9bc4e2, 0xa5d6a7, 0xffcc80, 0xef9a9a, 0xb39ddb, 0x90caf9];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
         // Render rooms from blueprint data
         try {
             if (blueprintData && blueprintData.rooms && blueprintData.rooms.length) {
                 blueprintData.rooms.forEach(room => {
-                    if (!room.dimensions) {
-                        console.warn("Room missing dimensions:", room);
+                    if (!room.dimensions || !room.center) {
+                        console.warn("Room missing dimensions or center:", room);
                         return;
                     }
 
-                    const length = room.dimensions.length || 5;
+                    const width = room.dimensions.width || 5;
                     const height = room.dimensions.height || 2.5;
-                    const width = room.dimensions.width || 4;
+                    const length = room.dimensions.length || 4;
 
-                    const geometry = new THREE.BoxGeometry(length, height, width);
-                    const material = new THREE.MeshBasicMaterial({
-                        color: 0x9bc4e2,
+                    const geometry = new THREE.BoxGeometry(width, height, length);
+                    const material = new THREE.MeshPhongMaterial({
+                        color: getRandomColor(),
                         wireframe: true,
                         transparent: true,
-                        opacity: 0.5
+                        opacity: 0.7
                     });
                     const cube = new THREE.Mesh(geometry, material);
+
+                    // Position at the room's center
+                    cube.position.set(
+                        room.center.x || 0,
+                        room.center.z || 0, // Using z for vertical position (up/down)
+                        room.center.y || 0  // Using y for depth (forward/backward)
+                    );
+
                     scene.add(cube);
                 });
+
+                // Render walls if available
+                if (blueprintData.walls && blueprintData.walls.length) {
+                    blueprintData.walls.forEach(wall => {
+                        const start = wall.start;
+                        const end = wall.end;
+                        const height = wall.height || 2.5;
+                        const thickness = wall.thickness || 0.1;
+
+                        // Calculate length and direction
+                        const length = Math.sqrt(
+                            Math.pow(end.x - start.x, 2) +
+                            Math.pow(end.y - start.y, 2)
+                        );
+
+                        // Find midpoint
+                        const midX = (start.x + end.x) / 2;
+                        const midY = (start.y + end.y) / 2;
+
+                        // Calculate rotation angle
+                        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+
+                        // Create wall geometry
+                        const wallGeometry = new THREE.BoxGeometry(length, height, thickness);
+                        const wallMaterial = new THREE.MeshPhongMaterial({
+                            color: 0xaaaaaa,
+                            wireframe: true
+                        });
+
+                        const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+
+                        // Position the wall properly
+                        wallMesh.position.set(midX, height/2, midY);
+                        wallMesh.rotation.y = angle;
+
+                        scene.add(wallMesh);
+                    });
+                }
             } else {
                 showError("No rooms found in blueprint data");
             }
@@ -89,6 +170,7 @@
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
+            controls.update(); // Only required if controls.enableDamping = true
             renderer.render(scene, camera);
         }
         animate();

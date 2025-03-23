@@ -8,7 +8,7 @@ import os
 
 from .blueprint_generator import BlueprintGenerator
 from .bluetooth_processor import BluetoothProcessor
-from .db import test_connection, execute_query
+from .db import test_connection, execute_query, execute_write_query
 from .schema_discovery import SchemaDiscovery
 from .ha_client import HomeAssistantClient
 import uuid
@@ -169,15 +169,19 @@ def generate_blueprint():
 
 @app.route('/api/blueprint', methods=['GET'])
 def get_blueprint():
-    """Get the latest blueprint."""
     try:
-        # Use correct method name
+        blueprint_generator = BlueprintGenerator()
         blueprint = blueprint_generator.get_latest_blueprint()
-        if (blueprint):
-            return jsonify(blueprint)
-        return jsonify({'error': 'No blueprint found'}), 404
+
+        if not blueprint:
+            logger.warning("No blueprint found in database")
+            return jsonify({'error': 'No blueprint found'}), 404
+
+        # Add debug logging
+        logger.info(f"Returning blueprint with {len(blueprint.get('rooms', []))} rooms")
+        return jsonify(blueprint)
     except Exception as e:
-        logger.error(f"Failed to get blueprint: {str(e)}")
+        logger.error(f"Error retrieving blueprint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/blueprint/status', methods=['GET'])
