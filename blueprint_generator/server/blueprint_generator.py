@@ -204,11 +204,18 @@ class BlueprintGenerator:
 
         return walls
 
-    def _validate_blueprint(self, blueprint: Dict) -> bool:
+    def eee_validate_blueprint(self, blueprint: Dict) -> bool:
         """Validate generated blueprint."""
         try:
+            # Log the validation criteria
+            logger.debug(f"Validation criteria: {self.validation}")
+
             # Validate rooms
             for room in blueprint['rooms']:
+                # Log room data for debugging
+                logger.debug(f"Validating room: {room['id']}")
+                logger.debug(f"Room dimensions: {room['dimensions']}")
+
                 # Check dimensions
                 dims = room['dimensions']
                 if dims['width'] < self.validation['min_room_dimension'] or \
@@ -217,34 +224,40 @@ class BlueprintGenerator:
                    dims['length'] > self.validation['max_room_dimension'] or \
                    dims['height'] < self.validation['min_ceiling_height'] or \
                    dims['height'] > self.validation['max_ceiling_height']:
-                    logger.error("Room dimensions out of valid range")
+                    logger.error(f"Room {room['id']} dimensions out of valid range: width={dims['width']}, length={dims['length']}, height={dims['height']}")
                     return False
 
                 # Check area
                 area = dims['width'] * dims['length']
                 if area < self.validation['min_room_area'] or \
                    area > self.validation['max_room_area']:
-                    logger.error("Room area out of valid range")
+                    logger.error(f"Room {room['id']} area out of valid range: {area}")
                     return False
 
             # Validate walls
-            for wall in blueprint['walls']:
+            for idx, wall in enumerate(blueprint['walls']):
+                # Log wall data
+                logger.debug(f"Validating wall {idx}: {wall}")
+
                 # Check thickness
                 if wall['thickness'] < self.validation['min_wall_thickness'] or \
                    wall['thickness'] > self.validation['max_wall_thickness']:
-                    logger.error("Wall thickness out of valid range")
+                    logger.error(f"Wall {idx} thickness out of valid range: {wall['thickness']}")
                     return False
 
                 # Check height
                 if wall['height'] < self.validation['min_ceiling_height'] or \
                    wall['height'] > self.validation['max_ceiling_height']:
-                    logger.error("Wall height out of valid range")
+                    logger.error(f"Wall {idx} height out of valid range: {wall['height']}")
                     return False
 
+            logger.info("Blueprint validation passed successfully")
             return True
 
         except Exception as e:
-            logger.error(f"Blueprint validation failed: {str(e)}")
+            logger.error(f"Blueprint validation failed with exception: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     def get_latest_blueprint(self) -> Optional[Dict]:
