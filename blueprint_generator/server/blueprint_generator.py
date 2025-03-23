@@ -9,7 +9,7 @@ from scipy.spatial import Delaunay
 
 from .bluetooth_processor import BluetoothProcessor
 from .ai_processor import AIProcessor
-from .db import get_latest_blueprint, save_blueprint_update, execute_query, execute_write_query
+from .db import save_blueprint_update, execute_query, execute_write_query
 
 logger = logging.getLogger(__name__)
 

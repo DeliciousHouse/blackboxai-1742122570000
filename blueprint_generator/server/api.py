@@ -217,10 +217,13 @@ def fix_schema():
 def visualize_blueprint():
     """Render a visualization of the latest blueprint."""
     try:
-        # Get the latest blueprint data
+        # Get the latest blueprint data - ALWAYS USE THE CLASS METHOD, not the import
         blueprint = blueprint_generator.get_latest_blueprint()
         if not blueprint:
             return render_template('no_blueprint.html')
+
+        # Add debug logging
+        logger.info(f"Visualizing blueprint with {len(blueprint.get('rooms', []))} rooms")
 
         return render_template('visualize.html', blueprint=blueprint)
     except Exception as e:
