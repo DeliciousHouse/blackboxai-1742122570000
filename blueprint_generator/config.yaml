@@ -1,5 +1,5 @@
 name: "3D Blueprint Generator"
-version: "1.72"
+version: "1.73"
 slug: "blueprint_generator"
 description: "Generate 3D home blueprints from Bluetooth sensor data"
 url: "https://github.com/delicioushouse/home-assistant_3d_blueprint_generator"
@@ -72,10 +72,6 @@ watchdog: http://[HOST]:8000/api/health
 protection: "supervisor"  # Only talk to Supervisor API
 devices: []  # No device access needed
 homeassistant_api: true  # Read Home Assistant entities
-
-# Update database access
-services:
-  - mysql:need
 
 # Docker configuration
 image: "ghcr.io/delicioushouse/blueprint-generator-{arch}"

@@ -228,36 +228,8 @@ class BluetoothProcessor:
                             if key in entity['attributes']:
                                 logger.info(f"  {key}: {entity['attributes'][key]}")
 
-            # Use test data to generate a blueprint
-            logger.info("Using sample data for blueprint generation testing")
-
-            # Sample positions for testing - using requested room names
-            device_positions = {
-                "lounge_device": {"x": 0, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "kitchen_device": {"x": 5, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "master_bedroom_device": {"x": 0, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "master_bathroom_device": {"x": 5, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "office_device": {"x": -5, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "dining_room_device": {"x": 2.5, "y": -3, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "garage_device": {"x": -5, "y": -5, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "sky_floor_device": {"x": 0, "y": 0, "z": 3, "accuracy": 1.0, "source": "sample"},
-                "balcony_device": {"x": 7, "y": 3, "z": 3, "accuracy": 1.0, "source": "sample"},
-                "front_porch_device": {"x": -2, "y": -7, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "laundry_room_device": {"x": 7, "y": -2, "z": 0, "accuracy": 1.0, "source": "sample"}
-            }
-
-            # Generate rooms from sample data
-            rooms = self.detect_rooms(device_positions)
-            self.save_device_positions_to_db(device_positions)
-
-            logger.info(f"Generated {len(rooms)} sample rooms from test data")
-
             return {
-                "processed": len(ble_devices),
-                "devices": len(device_positions),
-                "rooms": len(rooms),
-                "device_positions": device_positions,
-                "room_list": rooms
+                "processed": len(ble_devices)
             }
 
         except Exception as e:
