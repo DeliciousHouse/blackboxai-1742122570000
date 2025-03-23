@@ -232,10 +232,10 @@ class BluetoothProcessor:
 
             # Sample positions for testing - these will create a simple layout
             device_positions = {
-                "living_room_device": {"x": 0, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "lounge_device": {"x": 0, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
                 "kitchen_device": {"x": 5, "y": 0, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "bedroom_device": {"x": 0, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
-                "bathroom_device": {"x": 5, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "master_bedroom_device": {"x": 0, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
+                "master_bathroom_device": {"x": 5, "y": 5, "z": 0, "accuracy": 1.0, "source": "sample"},
                 "hallway_device": {"x": 2.5, "y": 2.5, "z": 0, "accuracy": 1.0, "source": "sample"}
             }
 
@@ -306,7 +306,7 @@ class BluetoothProcessor:
         #                     parts = entity_id.split('_')
         #                     if len(parts) >= 3:
         #                         device_id = '_'.join(parts[0:2])  # e.g., "sensor_madisons"
-        #                         sensor_id = '_'.join(parts[2:])   # e.g., "bathroom_ble"
+        #                         sensor_id = '_'.join(parts[2:])   # e.g., "master_bathroom_ble"
         #                         logger.info(f"Matched generic pattern: device={device_id}, sensor={sensor_id}")
         #                     else:
         #                         logger.info(f"Couldn't match pattern for {entity_id}")
@@ -648,12 +648,12 @@ class BluetoothProcessor:
             rooms = []
 
             # Living room (position at 0,0)
-            if "living_room_device" in positions:
+            if "lounge_device" in positions:
                 rooms.append({
-                    'id': 'living_room',
-                    'name': 'Living Room',
+                    'id': 'lounge',
+                    'name': 'Lounge',
                     'center': {'x': 0, 'y': 0, 'z': 0},
-                    'dimensions': {'width': a5, 'length': 5, 'height': 2.5},
+                    'dimensions': {'width': 5, 'length': 5, 'height': 2.5},
                     'bounds': {
                         'min': {'x': -2.5, 'y': -2.5, 'z': 0},
                         'max': {'x': 2.5, 'y': 2.5, 'z': 2.5}
@@ -673,11 +673,11 @@ class BluetoothProcessor:
                     }
                 })
 
-            # Bedroom (position at 0,5)
-            if "bedroom_device" in positions:
+            # master_bedroom (position at 0,5)
+            if "master_bedroom_device" in positions:
                 rooms.append({
-                    'id': 'bedroom',
-                    'name': 'Bedroom',
+                    'id': 'master_bedroom',
+                    'name': 'Master Bedroom',
                     'center': {'x': 0, 'y': 5, 'z': 0},
                     'dimensions': {'width': 4, 'length': 4, 'height': 2.5},
                     'bounds': {
@@ -686,11 +686,11 @@ class BluetoothProcessor:
                     }
                 })
 
-            # Bathroom (position at 5,5)
-            if "bathroom_device" in positions:
+            # master_bathroom (position at 5,5)
+            if "master_bathroom_device" in positions:
                 rooms.append({
-                    'id': 'bathroom',
-                    'name': 'Bathroom',
+                    'id': 'master_bathroom',
+                    'name': 'Master Bathroom',
                     'center': {'x': 5, 'y': 5, 'z': 0},
                     'dimensions': {'width': 3, 'length': 3, 'height': 2.5},
                     'bounds': {
