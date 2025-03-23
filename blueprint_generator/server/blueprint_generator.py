@@ -51,70 +51,57 @@ class BlueprintGenerator:
             }
         }
 
-    def generate_blueprint(self, time_window=3600):
-        """Generate a blueprint using position data from integrations."""
+    def generate_blueprint(self, device_positions=None, rooms=None):
+        """Generate a 3D blueprint based on device positions and detected rooms."""
         try:
-            job_id = str(uuid.uuid4())
-            self.latest_job_id = job_id
-            self.status = {"state": "processing", "progress": 10, "job_id": job_id}
+            # If no positions are provided, load from database
+            if device_positions is None:
+                device_positions = self.get_device_positions_from_db()
 
-            # First check for Bermuda positions
-            query = """
-            SELECT device_id, position_data FROM device_positions
-            WHERE source = 'bermuda' AND timestamp > NOW() - INTERVAL %s SECOND
-            """
-            bermuda_positions = {row[0]: json.loads(row[1]) for row in execute_query(query, (time_window,))}
+            # If no rooms are provided, try to detect them
+            if rooms is None:
+                bluetooth_processor = BluetoothProcessor()
+                rooms = bluetooth_processor.detect_rooms(device_positions)
 
-            # Basic blueprint structure
+            if not rooms:  # If still no rooms, check if we have positions to work with
+                if not device_positions:
+                    logger.warning("No valid positions found for blueprint generation")
+                    return {}
+
+                # Debug what positions we have
+                logger.info(f"Have {len(device_positions)} positions but no rooms. Position keys: {list(device_positions.keys())}")
+
+                # Try to create rooms from positions directly
+                bluetooth_processor = BluetoothProcessor()
+                rooms = bluetooth_processor.detect_rooms(device_positions)
+
+                if not rooms:
+                    logger.warning("Failed to generate rooms from available positions")
+                    return {}
+
+            # Now we should have rooms to generate a blueprint
+            logger.info(f"Generating blueprint with {len(rooms)} rooms")
+
+            # Create the blueprint structure
             blueprint = {
-                "id": job_id,
-                "timestamp": datetime.now().isoformat(),
-                "rooms": [
-                    {"id": "lounge", "name": "Lounge", "dimensions": {"length": 5, "width": 4, "height": 3}}
-                ],
-                "walls": [],
-                "devices": []
+                'version': '1.0',
+                'generated_at': datetime.now().isoformat(),
+                'rooms': rooms,
+                'floors': self._group_rooms_into_floors(rooms),
+                'metadata': {
+                    'device_count': len(device_positions),
+                    'room_count': len(rooms)
+                }
             }
 
-            # Add devices from Bermuda positions
-            if bermuda_positions:
-                logger.info(f"Using {len(bermuda_positions)} positions from Bermuda")
-                for device_id, position in bermuda_positions.items():
-                    blueprint["devices"].append({
-                        "id": device_id,
-                        "position": position,
-                        "source": "bermuda"
-                    })
-            else:
-                # Fall back to raw readings if no Bermuda positions
-                logger.warning("No valid positions found for blueprint generation")
+            # Save blueprint to database
+            self._save_blueprint_to_db(blueprint)
 
-                # Get device positions using the bluetooth processor
-                positions = self.bluetooth_processor.estimate_positions(time_window)
-                if positions:
-                    # Detect rooms
-                    rooms = self.bluetooth_processor.detect_rooms(positions)
-                    if rooms:
-                        blueprint['rooms'] = rooms
-                        blueprint['positions'] = positions
-
-                        # Generate walls using AI-enhanced prediction
-                        blueprint['walls'] = self._generate_walls(rooms, positions)
-
-                        # Apply AI-based blueprint refinement if enabled
-                        if self.config.get('ai_settings', {}).get('use_ml_blueprint_refinement', True):
-                            blueprint = self._refine_blueprint(blueprint)
-
-            # Store blueprint in database
-            self._save_blueprint(blueprint)
-
-            self.status = {"state": "completed", "progress": 100, "job_id": job_id}
-            return {"job_id": job_id}
+            return blueprint
 
         except Exception as e:
-            self.status = {"state": "error", "error": str(e)}
-            logger.error(f"Blueprint generation failed: {str(e)}")
-            raise
+            logger.error(f"Error generating blueprint: {e}")
+            return {}
 
     def _generate_walls(self, rooms: List[Dict], positions: Optional[Dict[str, Dict[str, float]]] = None) -> List[Dict]:
         """Generate walls between rooms using AI prediction when available."""
