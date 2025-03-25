@@ -239,6 +239,7 @@ class BluetoothProcessor:
     def estimate_positions(self, time_window: int = 300) -> Dict[str, Dict[str, float]]:
         """Estimate positions of all devices in the time window."""
         readings = get_sensor_readings(time_window)
+        logger.info(f"Found {len(readings)} sensor readings")  # Add this line
         if not readings:
             return {}
 
@@ -249,6 +250,7 @@ class BluetoothProcessor:
             if device_id not in devices:
                 devices[device_id] = []
             devices[device_id].append(reading)
+        logger.info(f"Found {len(devices)} devices with readings")  # Add this line
 
         # Estimate position for each device
         positions = {}
@@ -256,6 +258,7 @@ class BluetoothProcessor:
             if len(device_readings) >= self.minimum_sensors:
                 position = self._trilaterate(device_readings)
                 if position:
+                    logger.info(f"Estimated position for {device_id}: {position}")  # Add this line
                     positions[device_id] = position
 
         return positions
