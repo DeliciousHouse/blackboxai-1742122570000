@@ -583,3 +583,30 @@ class BlueprintGenerator:
 
         logger.info(f"Grouped {len(rooms)} rooms into {len(floors)} floors")
         return floors
+
+# Add this to your main.py or blueprint_generator.py
+def ensure_reference_positions():
+    """Make sure we have at least some reference positions in the database"""
+    from .db import get_sqlite_connection
+
+    conn = get_sqlite_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM device_positions")
+    count = cursor.fetchone()[0]
+    conn.close()
+
+    if count == 0:
+        logger.info("No device positions in database, creating initial reference points")
+        # Create at least 3 reference points for the system to work with
+        default_positions = {
+            "reference_point_1": {"x": 0, "y": 0, "z": 0},
+            "reference_point_2": {"x": 5, "y": 0, "z": 0},
+            "reference_point_3": {"x": 0, "y": 5, "z": 0}
+        }
+        from .bluetooth_processor import save_device_position
+        for device_id, position in default_positions.items():
+            position['source'] = 'initial_setup'
+            position['accuracy'] = 1.0
+            save_device_position(device_id, position)
+        return default_positions
+    return None

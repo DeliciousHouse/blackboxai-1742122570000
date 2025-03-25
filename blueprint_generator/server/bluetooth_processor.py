@@ -212,28 +212,148 @@ class BluetoothProcessor:
             logger.info(f"BLE devices type: {type(ble_devices)}")
             logger.info(f"BLE devices count: {len(ble_devices) if ble_devices else 0}")
 
-            # Log more device samples to understand the structure
-            if len(ble_devices) > 0:
-                sample_count = min(10, len(ble_devices))
-                logger.info(f"Logging {sample_count} sample devices for debugging:")
-                for i, entity in enumerate(ble_devices[:sample_count]):
-                    entity_id = entity.get('entity_id', 'unknown')
-                    logger.info(f"Sample entity {i+1}: {entity_id} = {entity.get('state')}")
-                    if 'attributes' in entity:
-                        # Log the first few attributes for debugging
-                        attrs = {k: entity['attributes'][k] for k in list(entity['attributes'].keys())[:5]}
-                        logger.info(f"  First attributes: {attrs}")
-                        # Look for specific useful attributes
-                        for key in ['friendly_name', 'device_class', 'distance', 'unit_of_measurement']:
-                            if key in entity['attributes']:
-                                logger.info(f"  {key}: {entity['attributes'][key]}")
+            # Group BLE readings by device identifier (MAC address or UUID)
+            device_groups = {}
+            device_positions = {}
+            direct_distance_readings = {}
+
+            # First pass: collect devices with direct position data or group by device identifier
+            for entity in ble_devices:
+                entity_id = entity.get('entity_id', '')
+                state = entity.get('state')
+                attrs = entity.get('attributes', {})
+
+                device_id = None
+
+                # Try to extract device identifier
+                if 'mac' in attrs:
+                    device_id = attrs['mac']
+                elif 'uuid' in attrs:
+                    device_id = attrs['uuid']
+                elif 'address' in attrs:
+                    device_id = attrs['address']
+                # Extract from entity_id format sensor.ble_xxx_<identifier>
+                elif '_' in entity_id:
+                    parts = entity_id.split('_')
+                    if len(parts) >= 3:
+                        device_id = parts[-1]
+
+                if not device_id:
+                    logger.debug(f"Could not determine device ID for {entity_id}")
+                    continue
+
+                # Look for direct position data
+                if 'coordinates' in attrs or all(k in attrs for k in ['x', 'y']):
+                    # Device has direct position information
+                    coords = attrs.get('coordinates', {})
+                    x = coords.get('x', attrs.get('x'))
+                    y = coords.get('y', attrs.get('y'))
+                    z = coords.get('z', attrs.get('z', 0))
+
+                    if x is not None and y is not None:
+                        logger.info(f"Found direct position for device {device_id}: ({x}, {y}, {z})")
+                        device_positions[device_id] = {
+                            'x': float(x),
+                            'y': float(y),
+                            'z': float(z),
+                            'accuracy': attrs.get('accuracy', 1.0),
+                            'source': 'direct_reading'
+                        }
+
+                # Group device readings for later processing
+                if device_id not in device_groups:
+                    device_groups[device_id] = []
+                device_groups[device_id].append(entity)
+
+                # Store direct distance readings if available
+                if 'distance' in attrs and attrs['distance'] is not None:
+                    if device_id not in direct_distance_readings:
+                        direct_distance_readings[device_id] = {}
+
+                    # Link this reading to a reference device if possible
+                    if 'source_id' in attrs:
+                        source_id = attrs['source_id']
+                        distance = float(attrs['distance'])
+                        direct_distance_readings[device_id][source_id] = distance
+                        logger.debug(f"Stored distance reading: {device_id} is {distance}m from {source_id}")
+
+            # Second pass: For devices without direct position, try to calculate from RSSI or distance
+            for device_id, entities in device_groups.items():
+                # Skip if we already have direct position
+                if device_id in device_positions:
+                    continue
+
+                # Try distance-based positioning first (more accurate)
+                if device_id in direct_distance_readings and len(direct_distance_readings[device_id]) >= 3:
+                    logger.info(f"Calculating position for {device_id} using distance readings")
+                    readings = []
+
+                    for ref_id, distance in direct_distance_readings[device_id].items():
+                        ref_position = get_reference_device_position(ref_id)
+                        if ref_position:
+                            readings.append({
+                                'sensor_location': ref_position,
+                                'distance': distance
+                            })
+
+                    if len(readings) >= 3:
+                        position = self._trilaterate_from_distances(readings)
+                        if position:
+                            device_positions[device_id] = position
+                            logger.info(f"Calculated position for {device_id} using distances: {position}")
+                            continue
+
+                # If no distance readings, try RSSI-based positioning
+                rssi_readings = {}
+                for entity in entities:
+                    if 'rssi' in entity.get('attributes', {}):
+                        rssi = entity['attributes']['rssi']
+                        if rssi is not None and rssi != "unavailable":
+                            # Identify the gateway/scanner that detected this RSSI
+                            source_id = entity.get('attributes', {}).get('source_id', entity.get('entity_id', ''))
+                            if source_id:
+                                rssi_readings[source_id] = rssi
+                                logger.debug(f"Stored RSSI reading: {device_id} has RSSI {rssi} from {source_id}")
+
+                if len(rssi_readings) >= 3:
+                    logger.info(f"Calculating position for {device_id} using RSSI readings from {len(rssi_readings)} sources")
+                    position = calculate_device_position(device_id, rssi_readings)
+                    if position:
+                        device_positions[device_id] = position
+                        logger.info(f"Added position for {device_id} based on RSSI calculations")
+
+            # Save all collected device positions to the database
+            if device_positions:
+                self.save_device_positions_to_db(device_positions)
+                logger.info(f"Successfully processed and saved positions for {len(device_positions)} devices")
+            else:
+                logger.warning("No device positions could be determined from BLE sensors")
+
+            # Find static devices that can be used as reference points
+            static_devices = []
+            for device_id, position in device_positions.items():
+                # Check if device appears to be static (low movement over time)
+                # This is a placeholder - in a real implementation, you'd check position history
+                if position.get('source') == 'direct_reading' or 'static' in device_id.lower():
+                    static_devices.append(device_id)
+                    logger.debug(f"Identified static device: {device_id}")
+
+            # Detect rooms based on device positions
+            if len(device_positions) >= 3:
+                rooms = self.detect_rooms(device_positions)
+                logger.info(f"Detected {len(rooms)} rooms from device positions")
+            else:
+                rooms = []
 
             return {
-                "processed": len(ble_devices)
+                "processed": len(ble_devices),
+                "positions_found": len(device_positions),
+                "rooms_detected": len(rooms),
+                "static_devices": len(static_devices)
             }
 
         except Exception as e:
-            logger.error(f"Error processing Bluetooth sensors: {e}")
+            logger.error(f"Error processing Bluetooth sensors: {e}", exc_info=True)
             return {"error": str(e)}
 
     def estimate_positions(self, time_window: int = 300) -> Dict[str, Dict[str, float]]:
@@ -578,3 +698,181 @@ def safe_json_request(url, headers):
     except Exception as e:
         logger.error(f"Request error: {e}")
         return []
+
+def save_device_position(device_id, position):
+    """Save device position to the database"""
+    try:
+        from .db import get_sqlite_connection
+        conn = get_sqlite_connection()
+        cursor = conn.cursor()
+
+        position_json = json.dumps(position)
+
+        cursor.execute('''
+        INSERT INTO device_positions (device_id, position_data, source, accuracy, timestamp)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ''', (device_id, position_json, 'trilateration', 0.85))
+
+        conn.commit()
+        conn.close()
+        logger.info(f"Saved position for device {device_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving device position: {e}")
+        return False
+
+def get_reference_device_position(device_id):
+    """Get position of a reference device from the database or Home Assistant."""
+    try:
+        # First try to get from our database
+        from .db import get_sqlite_connection
+        conn = get_sqlite_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+        SELECT position_data FROM device_positions
+        WHERE device_id = ?
+        ORDER BY timestamp DESC LIMIT 1
+        ''', (device_id,))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        if result and result[0]:
+            logger.debug(f"Found reference position for {device_id} in database")
+            return json.loads(result[0])
+
+        # If not in database, try Home Assistant integration
+        from .ha_client import HomeAssistantClient
+        ha_client = HomeAssistantClient()
+
+        # Try to get position from Home Assistant entity attributes
+        entity = ha_client.get_entity(device_id)
+        if entity and 'attributes' in entity:
+            attrs = entity['attributes']
+
+            # Check for common position attributes
+            if all(k in attrs for k in ['x', 'y', 'z']):
+                logger.debug(f"Found reference position for {device_id} in HA attributes")
+                return {'x': attrs['x'], 'y': attrs['y'], 'z': attrs.get('z', 0)}
+
+            if 'position' in attrs and isinstance(attrs['position'], dict):
+                logger.debug(f"Found reference position for {device_id} in HA position attribute")
+                return attrs['position']
+
+        logger.warning(f"No position found for reference device {device_id}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error getting reference device position: {e}")
+        return None
+
+def calculate_device_position(device_id, rssi_readings):
+    """
+    Calculate device position using trilateration from RSSI readings
+    rssi_readings: Dictionary of {reference_device_id: rssi_value}
+    """
+    logger.info(f"Calculating position for device {device_id} with {len(rssi_readings)} reference points")
+
+    # Need at least 3 reference points for 2D positioning
+    if len(rssi_readings) < 3:
+        logger.warning(f"Not enough reference points for device {device_id}: {len(rssi_readings)}")
+        return None
+
+    # Convert RSSI to distances using AI processor
+    from .ai_processor import AIProcessor
+    ai_processor = AIProcessor()
+
+    distances = {}
+    reference_positions = {}
+
+    # Get reference device positions and calculate distances
+    for ref_id, rssi in rssi_readings.items():
+        logger.debug(f"Processing reference device {ref_id} with RSSI {rssi}")
+
+        if rssi is None or rssi == "unavailable" or rssi == "unknown":
+            logger.debug(f"Skipping reference device {ref_id} with invalid RSSI: {rssi}")
+            continue
+
+        # Get position of reference device
+        ref_position = get_reference_device_position(ref_id)
+        if ref_position is None:
+            logger.debug(f"No position found for reference device {ref_id}")
+            continue
+
+        # Calculate distance from RSSI
+        try:
+            distance = ai_processor.estimate_distance(rssi)
+            logger.debug(f"Calculated distance for {ref_id}: {distance}m from RSSI {rssi}")
+
+            reference_positions[ref_id] = ref_position
+            distances[ref_id] = distance
+        except Exception as e:
+            logger.warning(f"Error calculating distance for {ref_id}: {e}")
+
+    # Need at least 3 valid reference points with known positions
+    if len(distances) < 3:
+        logger.warning(f"Not enough reference points with valid positions for {device_id}: {len(distances)}")
+        return None
+
+    # Prepare data for trilateration
+    positions = []
+    distance_values = []
+
+    for ref_id, position in reference_positions.items():
+        positions.append([position['x'], position['y'], position.get('z', 0)])
+        distance_values.append(distances[ref_id])
+
+    logger.debug(f"Using reference positions: {positions}")
+    logger.debug(f"Using distances: {distance_values}")
+
+    # Convert to numpy arrays
+    positions = np.array(positions)
+    distances = np.array(distance_values)
+
+    # Define objective function for minimization
+    def objective(point):
+        return sum((np.linalg.norm(positions - point, axis=1) - distances) ** 2)
+
+    # Initial guess: centroid of reference positions
+    initial_guess = np.mean(positions, axis=0)
+    logger.debug(f"Initial position guess: {initial_guess}")
+
+    try:
+        # Minimize the objective function
+        result = minimize(
+            objective,
+            initial_guess,
+            method='Nelder-Mead',
+            options={'maxiter': 1000}
+        )
+
+        if not result.success:
+            logger.warning(f"Position estimation failed for {device_id}: {result.message}")
+            return None
+
+        # Calculate accuracy estimate
+        accuracy = math.sqrt(result.fun / len(distances))
+        logger.debug(f"Position calculation successful with accuracy: {accuracy}")
+
+        # Create the calculated position
+        calculated_position = {
+            'x': float(result.x[0]),
+            'y': float(result.x[1]),
+            'z': float(result.x[2] if len(result.x) > 2 else 0),
+            'accuracy': float(accuracy),
+            'source': 'trilateration'
+        }
+
+        # Save the calculated position to the database
+        success = save_device_position(device_id, calculated_position)
+        if success:
+            logger.info(f"Calculated position for device {device_id}: {calculated_position}")
+        else:
+            logger.warning(f"Failed to save position for device {device_id}")
+
+        return calculated_position
+
+    except Exception as e:
+        logger.error(f"Error during trilateration for {device_id}: {e}")
+        return None

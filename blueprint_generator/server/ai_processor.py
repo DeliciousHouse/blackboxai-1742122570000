@@ -102,6 +102,15 @@ class AIProcessor:
             conn = get_sqlite_connection()
             cursor = conn.cursor()
 
+            # Check if tables already exist
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='rssi_distance_samples';")
+            table_exists = cursor.fetchone() is not None
+
+            if table_exists:
+                logger.info("AI database tables already exist, skipping creation")
+                conn.close()
+                return True
+
             # Create enhanced RSSI distance samples table with additional fields
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS rssi_distance_samples (
@@ -253,6 +262,19 @@ class AIProcessor:
             from .db import get_sqlite_connection
             conn = get_sqlite_connection()
             cursor = conn.cursor()
+
+            # Check if the sample already exists
+            cursor.execute('''
+            SELECT id FROM rssi_distance_samples
+            WHERE device_id = ? AND sensor_id = ? AND rssi = ? AND distance = ?
+            ''', (device_id, sensor_id, rssi, distance))
+            existing_sample = cursor.fetchone()
+
+            if existing_sample:
+                logger.warning(f"Duplicate RSSI-distance sample found, skipping insertion.")
+                conn.close()
+                return False
+
             cursor.execute('''
             INSERT INTO rssi_distance_samples
             (device_id, sensor_id, rssi, distance, tx_power, frequency,
