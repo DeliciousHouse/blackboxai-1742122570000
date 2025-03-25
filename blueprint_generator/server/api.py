@@ -13,6 +13,7 @@ from .db import test_connection, execute_query, execute_write_query
 from .schema_discovery import SchemaDiscovery
 from .ha_client import HomeAssistantClient
 import uuid
+from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -608,3 +609,198 @@ def debug_blueprint():
     except Exception as e:
         logger.error(f"Debug blueprint error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/blueprint/generate-default', methods=['POST'])
+def generate_default_blueprint():
+    """Generate a default blueprint based on the actual home areas."""
+    try:
+        # Get parameters from request
+        params = request.json or {}
+        include_outside = params.get('include_outside', True)
+
+        # Your actual home areas with device counts to estimate room sizes
+        areas = {
+            # Outside areas
+            'outside': [
+                {'name': 'Backyard', 'devices': 10, 'floor': 0},
+                {'name': 'Balcony', 'devices': 8, 'floor': 0},
+                {'name': 'Driveway', 'devices': 4, 'floor': 0},
+                {'name': 'Front Porch', 'devices': 7, 'floor': 0},
+                {'name': 'Garage', 'devices': 6, 'floor': 0}
+            ],
+            # First floor areas
+            'first_floor': [
+                {'name': 'Bathroom', 'devices': 5, 'floor': 1},
+                {'name': 'Christian Room', 'devices': 3, 'floor': 1},
+                {'name': 'Dining Room', 'devices': 14, 'floor': 1},
+                {'name': 'Kitchen', 'devices': 14, 'floor': 1},
+                {'name': 'Laundry Room', 'devices': 5, 'floor': 1},
+                {'name': 'Lounge', 'devices': 4, 'floor': 1},
+                {'name': 'Master Bathroom', 'devices': 9, 'floor': 1},
+                {'name': 'Master Bedroom', 'devices': 12, 'floor': 1},
+                {'name': 'Nova Room', 'devices': 5, 'floor': 1}
+            ],
+            # Second floor areas
+            'second_floor': [
+                {'name': 'Dressing Room', 'devices': 2, 'floor': 2},
+                {'name': 'Office', 'devices': 17, 'floor': 2},
+                {'name': 'Sky Floor', 'devices': 1, 'floor': 2}
+            ]
+        }
+
+        # Select areas to include
+        included_areas = []
+        if include_outside:
+            included_areas.extend(areas['outside'])
+        included_areas.extend(areas['first_floor'])
+        included_areas.extend(areas['second_floor'])
+
+        # Calculate room sizes based on device count
+        # More devices = larger room
+        total_devices = sum(area['devices'] for area in included_areas)
+        base_area = 100  # Total floor space to distribute
+
+        for area in included_areas:
+            # Scale size based on device count
+            size_factor = (area['devices'] / total_devices) * 3 + 0.5  # Ensure even small rooms get some size
+
+            # Calculate width and length (sized proportionally to devices)
+            area['width'] = max(3, round(size_factor * 2, 1))  # Minimum 3m width
+            area['length'] = max(3, round(size_factor * 2.5, 1))  # Minimum 3m length
+
+        # Create a layout for the rooms
+        default_rooms = []
+        device_positions = {}
+
+        # Position generation
+        x_pos = 0
+        y_pos = 0
+        max_width = 0
+
+        # Create room layouts by floor
+        for floor in [0, 1, 2]:
+            floor_areas = [a for a in included_areas if a['floor'] == floor]
+            if not floor_areas:
+                continue
+
+            # Reset x position for new floor
+            x_pos = 0
+            # If ground floor, we'll place some areas (outside) below y=0
+            if floor == 0:
+                y_pos = -20  # Outside areas
+            elif floor == 1:
+                y_pos = 0   # First floor
+            else:
+                y_pos = 25  # Second floor
+
+            # Arrange rooms in rows (simple layout)
+            current_row_y = y_pos
+            current_row_height = 0
+
+            for i, area in enumerate(floor_areas):
+                width = area['width']
+                length = area['length']
+
+                # Try to arrange in rows
+                if x_pos + width > 25:  # Start a new row if we exceed 25m width
+                    x_pos = 0
+                    current_row_y += current_row_height + 1  # 1m corridor
+                    current_row_height = 0
+
+                # Create unique room ID
+                room_id = f"room_{area['name'].lower().replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
+
+                # Define room center and dimensions
+                center_x = x_pos + width/2
+                center_y = current_row_y + length/2
+                center_z = floor * 3 + 1.5  # 3m per floor, centers at 1.5m above floor
+
+                # Calculate bounds
+                min_x, min_y, min_z = x_pos, current_row_y, floor * 3
+                max_x, max_y, max_z = x_pos + width, current_row_y + length, floor * 3 + 3
+
+                # Add room to blueprint
+                default_rooms.append({
+                    'id': room_id,
+                    'name': area['name'],
+                    'floor': floor,
+                    'center': {
+                        'x': center_x,
+                        'y': center_y,
+                        'z': center_z
+                    },
+                    'dimensions': {
+                        'width': width,
+                        'length': length,
+                        'height': 3  # Standard height
+                    },
+                    'bounds': {
+                        'min': {'x': min_x, 'y': min_y, 'z': min_z},
+                        'max': {'x': max_x, 'y': max_y, 'z': max_z}
+                    },
+                    'type': 'outdoor' if floor == 0 else 'indoor'
+                })
+
+                # Add reference points for each room
+                device_id = f"reference_{area['name'].lower().replace(' ', '_')}"
+                position = {
+                    'x': center_x,
+                    'y': center_y,
+                    'z': center_z,
+                    'accuracy': 1.0,
+                    'source': 'default_blueprint'
+                }
+
+                # Store for batch saving
+                device_positions[device_id] = position
+
+                # Update position for next room and track row height
+                x_pos += width + 1  # 1m gap between rooms
+                current_row_height = max(current_row_height, length)
+                max_width = max(max_width, x_pos)
+
+        # Create a basic wall layout
+        walls = []
+
+        # Create a blueprint structure
+        blueprint = {
+            'rooms': default_rooms,
+            'walls': walls,
+            'floors': [
+                {'level': 0, 'name': 'Outside', 'height': 0, 'rooms': [r['id'] for r in default_rooms if r['floor'] == 0]},
+                {'level': 1, 'name': 'First Floor', 'height': 3, 'rooms': [r['id'] for r in default_rooms if r['floor'] == 1]},
+                {'level': 2, 'name': 'Second Floor', 'height': 6, 'rooms': [r['id'] for r in default_rooms if r['floor'] == 2]}
+            ],
+            'generated': True,
+            'timestamp': datetime.now().isoformat(),
+            'source': 'default_generator',
+            'status': 'active' # Required by your existing _save_blueprint method
+        }
+
+        # Save device positions to database
+        for device_id, position in device_positions.items():
+            bluetooth_processor.save_device_position(device_id, position)
+            logger.info(f"Created reference point {device_id} at position {position}")
+
+        # Use blueprint generator to save the blueprint
+        # This uses your existing _save_blueprint method
+        blueprint_generator.latest_generated_blueprint = blueprint
+        saved = blueprint_generator._save_blueprint(blueprint)
+
+        # Get a blueprint ID (can be made up since we don't have a return ID)
+        blueprint_id = str(uuid.uuid4())
+
+        return jsonify({
+            'success': saved,
+            'blueprint_id': blueprint_id,
+            'message': f'Default blueprint generated with {len(default_rooms)} rooms based on your Home Assistant areas',
+            'reference_points_created': len(device_positions),
+            'details': {
+                'rooms': [room['name'] for room in default_rooms],
+                'floors': [floor['name'] for floor in blueprint['floors']]
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Default blueprint generation failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
