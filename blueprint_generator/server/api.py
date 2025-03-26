@@ -779,7 +779,9 @@ def generate_default_blueprint():
 
         # Save device positions to database
         for device_id, position in device_positions.items():
-            bluetooth_processor.save_device_position(device_id, position)
+            from .bluetooth_processor import save_device_position
+            save_device_position(device_id, position)
+            logger.info(f"Created reference point {device_id} at position {position}")
             logger.info(f"Created reference point {device_id} at position {position}")
 
         # Use blueprint generator to save the blueprint
